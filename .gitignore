@@ -5,3 +5,5 @@ dist/
 *.db-wal
 *.db-shm
 bun.lock
+docs/
+.cachebro/
