@@ -31,7 +31,7 @@ function getCliCommand(): { command: string; args: string[] } {
   if (execPath.includes("node_modules")) {
     return { command: "suggestion-box", args: [] };
   }
-  return { command: "node", args: [resolve(execPath)] };
+  return { command: "bun", args: [resolve(execPath)] };
 }
 
 function timeAgo(epochSec: number): string {
