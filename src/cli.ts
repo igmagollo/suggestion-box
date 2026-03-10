@@ -201,15 +201,15 @@ if (!command || command === "serve") {
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
   const gitignorePath = join(targetDir, ".gitignore");
+  const ignoreEntries = [".supervisor/", ".mcp.json", ".codex/", "opencode.json"];
   if (existsSync(gitignorePath)) {
-    const content = readFileSync(gitignorePath, "utf-8");
-    if (!content.includes(".supervisor")) {
-      writeFileSync(gitignorePath, content.trimEnd() + "\n.supervisor/\n");
-      console.log("  Updated .gitignore");
+    let content = readFileSync(gitignorePath, "utf-8");
+    const missing = ignoreEntries.filter(e => !content.includes(e));
+    if (missing.length > 0) {
+      writeFileSync(gitignorePath, content.trimEnd() + "\n" + missing.join("\n") + "\n");
     }
   } else {
-    writeFileSync(gitignorePath, ".supervisor/\n");
-    console.log("  Created .gitignore");
+    writeFileSync(gitignorePath, ignoreEntries.join("\n") + "\n");
   }
 
   const mcpJsonPath = join(targetDir, ".mcp.json");
