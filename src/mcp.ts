@@ -1,6 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { createFeedbackStore } from "supervisor";
+import { createFeedbackStore } from "./sdk.js";
 import { createEmbedder } from "./embedder.js";
 import { resolve } from "path";
 import { existsSync, mkdirSync } from "fs";

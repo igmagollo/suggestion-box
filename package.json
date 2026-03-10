@@ -3,12 +3,12 @@
   "version": "0.1.0",
   "description": "Centralized feedback registry MCP for coding agents and subagents.",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/sdk.js",
+  "types": "dist/sdk.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./dist/sdk.d.ts",
+      "import": "./dist/sdk.js"
     }
   },
   "bin": {
@@ -16,7 +16,7 @@
   },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && bun build packages/cli/src/index.ts --target node --external @tursodatabase/database --external @modelcontextprotocol/sdk --external zod --external @huggingface/transformers --outfile dist/cli.mjs && node -e \"let f=require('fs');let c=f.readFileSync('dist/cli.mjs','utf8');f.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
+    "build": "tsc -p tsconfig.build.json && bun build src/cli.ts --target node --external @tursodatabase/database --external @modelcontextprotocol/sdk --external zod --external @huggingface/transformers --outfile dist/cli.mjs && node -e \"let f=require('fs');let c=f.readFileSync('dist/cli.mjs','utf8');f.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
@@ -30,7 +30,6 @@
     "bun-types": "latest",
     "typescript": "^5.0.0"
   },
-  "workspaces": ["packages/*"],
   "keywords": ["mcp", "ai", "agent", "feedback", "feature-request", "supervisor"],
   "license": "MIT"
 }

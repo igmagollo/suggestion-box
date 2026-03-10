@@ -1,4 +1,4 @@
-import { createFeedbackStore } from "../packages/sdk/src/index.js";
+import { createFeedbackStore } from "../src/sdk.js";
 import { mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 

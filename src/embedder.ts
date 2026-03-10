@@ -1,4 +1,4 @@
-import type { EmbedFn } from "supervisor";
+import type { EmbedFn } from "./types.js";
 
 let cachedEmbedder: EmbedFn | null = null;
 

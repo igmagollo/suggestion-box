@@ -1,5 +1,5 @@
 import { execSync } from "child_process";
-import type { Feedback } from "supervisor";
+import type { Feedback } from "./types.js";
 
 export function checkGhAuth(): boolean {
   try {

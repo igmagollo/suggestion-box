@@ -9,7 +9,7 @@
     "types": ["node"],
     "outDir": "dist",
     "declaration": true,
-    "rootDir": "packages/sdk/src"
+    "rootDir": "src"
   },
-  "include": ["packages/sdk/src/**/*.ts"]
+  "include": ["src/**/*.ts"]
 }
