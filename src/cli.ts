@@ -42,7 +42,35 @@ function timeAgo(epochSec: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-if (!command || command === "serve") {
+if (command === "hook") {
+  const event = process.argv[3];
+  if (event === "session-start") {
+    console.log(`<supervisor>
+You have access to the supervisor MCP — a feedback registry for improving your workspace.
+
+BE PROACTIVE. Throughout your work, actively look for opportunities to submit feedback:
+
+1. **Friction** — When a tool, MCP, or workflow slows you down, is confusing, or gives insufficient context, submit it immediately:
+   supervisor_submit_feedback(category: "friction", content: "what happened", target_type: ..., target_name: ...)
+
+2. **Feature requests** — When you wish a tool could do something it can't, or you see a clear improvement:
+   supervisor_submit_feedback(category: "feature_request", content: "what you need", target_type: ..., target_name: ...)
+
+3. **Observations** — When you notice suboptimal patterns, confusing code, or workflow inefficiencies:
+   supervisor_submit_feedback(category: "observation", content: "what you noticed", target_type: ..., target_name: ...)
+
+IMPORTANT RULES:
+- Include estimated_tokens_saved and/or estimated_time_saved_minutes when you can — this helps prioritize.
+- Include github_repo when the feedback targets an open-source tool (e.g., "upstash/context7").
+- The system auto-deduplicates: if similar feedback exists, your submission becomes a vote. No need to check first.
+- Do NOT hold back. Even small friction is worth reporting. The more data, the better the workspace gets.
+- Subagents: you inherit this MCP. Use it. Your feedback is equally valuable.
+</supervisor>`);
+  }
+  // Other hook events are no-ops for now
+  process.exit(0);
+
+} else if (!command || command === "serve") {
   await startMcpServer();
 
 } else if (command === "status") {
@@ -261,6 +289,32 @@ enabled = true
   writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + "\n");
   console.log("  Wrote opencode.json (OpenCode)");
 
+  // Claude Code hooks — ~/.claude/settings.json
+  const settingsPath = join(process.env.HOME ?? "~", ".claude", "settings.json");
+  if (existsSync(settingsPath)) {
+    let settings: any = {};
+    try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
+    if (!settings.hooks) settings.hooks = {};
+
+    const hookCmd = cli.command === "supervisor"
+      ? "supervisor hook session-start"
+      : `${cli.command} ${cli.args.join(" ")} hook session-start`;
+
+    const existing: any[] = settings.hooks.SessionStart ?? [];
+    const hasHook = existing.some((h: any) =>
+      h.hooks?.some((hh: any) => hh.command?.includes("supervisor") && hh.command?.includes("hook"))
+    );
+
+    if (!hasHook) {
+      existing.push({
+        hooks: [{ type: "command", command: hookCmd, timeout: 10 }],
+      });
+      settings.hooks.SessionStart = existing;
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+      console.log("  Installed SessionStart hook (~/.claude/settings.json)");
+    }
+  }
+
   console.log(`\nsupervisor initialized in ${targetDir}`);
   console.log("Restart your coding agent to activate.");
 
@@ -269,7 +323,8 @@ enabled = true
 
 Usage:
   supervisor serve                Start the MCP server (default)
-  supervisor init [dir]           Set up supervisor for a project
+  supervisor init [dir]           Set up supervisor for a project (MCP + hooks)
+  supervisor hook <event>         Run a hook (session-start)
   supervisor status               Overview: counts, top voted, impact
   supervisor list [--category X] [--status X] [--target X]
   supervisor publish <id> [repo]  Publish feedback as GitHub issue
