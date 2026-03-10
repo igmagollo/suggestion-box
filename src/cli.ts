@@ -6,7 +6,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 const command = process.argv[2];
 
 function getDbPath(): string {
-  const dataDir = resolve(process.env.SUPERVISOR_DIR ?? ".supervisor");
+  const dataDir = resolve(process.env.SUGGESTION_BOX_DIR ?? ".suggestion-box");
   return join(dataDir, "feedback.db");
 }
 
@@ -14,7 +14,7 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
   const { connect } = await import("@tursodatabase/database");
   const dbPath = getDbPath();
   if (!existsSync(dbPath)) {
-    console.log("No supervisor database found. Run 'supervisor init' first.");
+    console.log("No suggestion-box database found. Run 'suggestion-box init' first.");
     process.exit(0);
   }
   const db = await connect(dbPath);
@@ -29,7 +29,7 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
 function getCliCommand(): { command: string; args: string[] } {
   const execPath = process.argv[1] ?? "";
   if (execPath.includes("node_modules")) {
-    return { command: "supervisor", args: [] };
+    return { command: "suggestion-box", args: [] };
   }
   return { command: "node", args: [resolve(execPath)] };
 }
@@ -45,19 +45,19 @@ function timeAgo(epochSec: number): string {
 if (command === "hook") {
   const event = process.argv[3];
   if (event === "session-start") {
-    console.log(`<supervisor>
-You have access to the supervisor MCP — a feedback registry for improving your workspace.
+    console.log(`<suggestion-box>
+You have access to the suggestion-box MCP — a feedback registry for improving your workspace.
 
 BE PROACTIVE. Throughout your work, actively look for opportunities to submit feedback:
 
 1. **Friction** — When a tool, MCP, or workflow slows you down, is confusing, or gives insufficient context, submit it immediately:
-   supervisor_submit_feedback(category: "friction", content: "what happened", target_type: ..., target_name: ...)
+   suggestion_box_submit_feedback(category: "friction", content: "what happened", target_type: ..., target_name: ...)
 
 2. **Feature requests** — When you wish a tool could do something it can't, or you see a clear improvement:
-   supervisor_submit_feedback(category: "feature_request", content: "what you need", target_type: ..., target_name: ...)
+   suggestion_box_submit_feedback(category: "feature_request", content: "what you need", target_type: ..., target_name: ...)
 
 3. **Observations** — When you notice suboptimal patterns, confusing code, or workflow inefficiencies:
-   supervisor_submit_feedback(category: "observation", content: "what you noticed", target_type: ..., target_name: ...)
+   suggestion_box_submit_feedback(category: "observation", content: "what you noticed", target_type: ..., target_name: ...)
 
 IMPORTANT RULES:
 - Include estimated_tokens_saved and/or estimated_time_saved_minutes when you can — this helps prioritize.
@@ -65,7 +65,7 @@ IMPORTANT RULES:
 - The system auto-deduplicates: if similar feedback exists, your submission becomes a vote. No need to check first.
 - Do NOT hold back. Even small friction is worth reporting. The more data, the better the workspace gets.
 - Subagents: you inherit this MCP. Use it. Your feedback is equally valuable.
-</supervisor>`);
+</suggestion-box>`);
   }
   // Other hook events are no-ops for now
   process.exit(0);
@@ -83,7 +83,7 @@ IMPORTANT RULES:
       "SELECT status, COUNT(*) as c FROM feedback GROUP BY status ORDER BY c DESC"
     ).all() as any[];
 
-    console.log(`supervisor status:`);
+    console.log(`suggestion-box status:`);
     console.log(`  Total feedback: ${total}`);
     console.log(`  By category: ${catRows.map((r: any) => `${r.category}=${r.c}`).join(", ") || "none"}`);
     console.log(`  By status: ${statusRows.map((r: any) => `${r.status}=${r.c}`).join(", ") || "none"}`);
@@ -144,7 +144,7 @@ IMPORTANT RULES:
 } else if (command === "dismiss") {
   const feedbackId = process.argv[3];
   if (!feedbackId) {
-    console.error("Usage: supervisor dismiss <feedback_id>");
+    console.error("Usage: suggestion-box dismiss <feedback_id>");
     process.exit(1);
   }
   await withDb(async (db) => {
@@ -163,7 +163,7 @@ IMPORTANT RULES:
   const feedbackId = process.argv[3];
   const repoOverride = process.argv[4];
   if (!feedbackId) {
-    console.error("Usage: supervisor publish <feedback_id> [repo]");
+    console.error("Usage: suggestion-box publish <feedback_id> [repo]");
     process.exit(1);
   }
 
@@ -182,7 +182,7 @@ IMPORTANT RULES:
 
     const repo = repoOverride ?? row.github_repo;
     if (!repo) {
-      console.error("No GitHub repo specified. Provide as argument: supervisor publish <id> <owner/repo>");
+      console.error("No GitHub repo specified. Provide as argument: suggestion-box publish <id> <owner/repo>");
       process.exit(1);
     }
 
@@ -225,11 +225,11 @@ IMPORTANT RULES:
   const targetDir = resolve(process.argv[3] ?? ".");
   const cli = getCliCommand();
 
-  const dataDir = join(targetDir, ".supervisor");
+  const dataDir = join(targetDir, ".suggestion-box");
   if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
 
   const gitignorePath = join(targetDir, ".gitignore");
-  const ignoreEntries = [".supervisor/", ".mcp.json", ".codex/", "opencode.json"];
+  const ignoreEntries = [".suggestion-box/", ".mcp.json", ".codex/", "opencode.json"];
   if (existsSync(gitignorePath)) {
     let content = readFileSync(gitignorePath, "utf-8");
     const missing = ignoreEntries.filter(e => !content.includes(e));
@@ -246,10 +246,10 @@ IMPORTANT RULES:
     try { mcpConfig = JSON.parse(readFileSync(mcpJsonPath, "utf-8")); } catch {}
   }
   if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
-  mcpConfig.mcpServers.supervisor = {
+  mcpConfig.mcpServers["suggestion-box"] = {
     command: cli.command,
     args: [...cli.args, "serve"],
-    env: { SUPERVISOR_DIR: join(targetDir, ".supervisor") },
+    env: { SUGGESTION_BOX_DIR: join(targetDir, ".suggestion-box") },
   };
   writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n");
   console.log("  Wrote .mcp.json (Claude Code)");
@@ -261,13 +261,13 @@ IMPORTANT RULES:
   if (existsSync(codexTomlPath)) {
     codexContent = readFileSync(codexTomlPath, "utf-8");
   }
-  if (!codexContent.includes("[mcp_servers.supervisor]")) {
+  if (!codexContent.includes("[mcp_servers.suggestion-box]")) {
     const codexArgs = [...cli.args, "serve"].map(a => `"${a}"`).join(", ");
     codexContent += `
-[mcp_servers.supervisor]
+[mcp_servers.suggestion-box]
 command = "${cli.command}"
 args = [${codexArgs}]
-env = { SUPERVISOR_DIR = "${join(targetDir, ".supervisor")}" }
+env = { SUGGESTION_BOX_DIR = "${join(targetDir, ".suggestion-box")}" }
 enabled = true
 `;
     writeFileSync(codexTomlPath, codexContent.trimStart());
@@ -280,10 +280,10 @@ enabled = true
     try { opencodeConfig = JSON.parse(readFileSync(opencodePath, "utf-8")); } catch {}
   }
   if (!opencodeConfig.mcp) opencodeConfig.mcp = {};
-  opencodeConfig.mcp.supervisor = {
+  opencodeConfig.mcp["suggestion-box"] = {
     type: "local",
     command: [cli.command, ...cli.args, "serve"],
-    environment: { SUPERVISOR_DIR: join(targetDir, ".supervisor") },
+    environment: { SUGGESTION_BOX_DIR: join(targetDir, ".suggestion-box") },
     enabled: true,
   };
   writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + "\n");
@@ -296,13 +296,13 @@ enabled = true
     try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
     if (!settings.hooks) settings.hooks = {};
 
-    const hookCmd = cli.command === "supervisor"
-      ? "supervisor hook session-start"
+    const hookCmd = cli.command === "suggestion-box"
+      ? "suggestion-box hook session-start"
       : `${cli.command} ${cli.args.join(" ")} hook session-start`;
 
     const existing: any[] = settings.hooks.SessionStart ?? [];
     const hasHook = existing.some((h: any) =>
-      h.hooks?.some((hh: any) => hh.command?.includes("supervisor") && hh.command?.includes("hook"))
+      h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
     );
 
     if (!hasHook) {
@@ -315,32 +315,32 @@ enabled = true
     }
   }
 
-  console.log(`\nsupervisor initialized in ${targetDir}`);
+  console.log(`\nsuggestion-box initialized in ${targetDir}`);
   console.log("Restart your coding agent to activate.");
 
 } else if (command === "help" || command === "--help") {
-  console.log(`supervisor - Centralized feedback registry for coding agents
+  console.log(`suggestion-box - Centralized feedback registry for coding agents
 
 Usage:
-  supervisor serve                Start the MCP server (default)
-  supervisor init [dir]           Set up supervisor for a project (MCP + hooks)
-  supervisor hook <event>         Run a hook (session-start)
-  supervisor status               Overview: counts, top voted, impact
-  supervisor list [--category X] [--status X] [--target X]
-  supervisor publish <id> [repo]  Publish feedback as GitHub issue
-  supervisor dismiss <id>         Dismiss a feedback entry
-  supervisor purge                Delete dismissed entries
-  supervisor help                 Show this help
+  suggestion-box serve                Start the MCP server (default)
+  suggestion-box init [dir]           Set up supervisor for a project (MCP + hooks)
+  suggestion-box hook <event>         Run a hook (session-start)
+  suggestion-box status               Overview: counts, top voted, impact
+  suggestion-box list [--category X] [--status X] [--target X]
+  suggestion-box publish <id> [repo]  Publish feedback as GitHub issue
+  suggestion-box dismiss <id>         Dismiss a feedback entry
+  suggestion-box purge                Delete dismissed entries
+  suggestion-box help                 Show this help
 
 Categories: friction, feature_request, observation
 Targets: mcp_server, tool, codebase, workflow, general
 Statuses: open, published, dismissed
 
 Environment:
-  SUPERVISOR_DIR     Data directory (default: .supervisor)
-  SUPERVISOR_MODEL   Embedding model override`);
+  SUGGESTION_BOX_DIR     Data directory (default: .suggestion-box)
+  SUGGESTION_BOX_MODEL   Embedding model override`);
 
 } else {
-  console.error(`Unknown command: ${command}. Run 'supervisor help' for usage.`);
+  console.error(`Unknown command: ${command}. Run 'suggestion-box help' for usage.`);
   process.exit(1);
 }

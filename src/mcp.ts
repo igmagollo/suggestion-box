@@ -15,7 +15,7 @@ import {
 import { checkGhAuth, createGithubIssue } from "./github.js";
 
 function getDataDir(): string {
-  const dir = resolve(process.env.SUPERVISOR_DIR ?? ".supervisor");
+  const dir = resolve(process.env.SUGGESTION_BOX_DIR ?? ".suggestion-box");
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -35,15 +35,15 @@ export async function startMcpServer(): Promise<void> {
   await store.init();
 
   const server = new McpServer({
-    name: "supervisor",
+    name: "suggestion-box",
     version: "0.1.0",
   });
 
   // -------------------------------------------------------------------------
-  // Tool: supervisor_submit_feedback
+  // Tool: suggestion_box_submit_feedback
   // -------------------------------------------------------------------------
   server.tool(
-    "supervisor_submit_feedback",
+    "suggestion_box_submit_feedback",
     `Submit feedback about a tool, MCP server, codebase, or workflow.
 
 Use category "friction" when you:
@@ -63,7 +63,7 @@ If similar feedback already exists, your submission becomes a vote on it instead
     submitFeedbackSchema.shape,
     async ({ category, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes }) => {
       try {
-        store.embedPending().catch((e) => console.error("[supervisor] embedPending error:", e));
+        store.embedPending().catch((e) => console.error("[suggestion-box] embedPending error:", e));
 
         const result = await store.submitFeedback({
           category,
@@ -97,11 +97,11 @@ If similar feedback already exists, your submission becomes a vote on it instead
   );
 
   // -------------------------------------------------------------------------
-  // Tool: supervisor_upvote_feedback
+  // Tool: suggestion_box_upvote_feedback
   // -------------------------------------------------------------------------
   server.tool(
-    "supervisor_upvote_feedback",
-    `Upvote an existing feedback entry. Use this when you encounter the same friction or agree with a feature request found via supervisor_list_feedback. Include evidence about your specific experience to strengthen the case.`,
+    "suggestion_box_upvote_feedback",
+    `Upvote an existing feedback entry. Use this when you encounter the same friction or agree with a feature request found via suggestion_box_list_feedback. Include evidence about your specific experience to strengthen the case.`,
     upvoteFeedbackSchema.shape,
     async ({ feedback_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes }) => {
       try {
@@ -124,10 +124,10 @@ If similar feedback already exists, your submission becomes a vote on it instead
   );
 
   // -------------------------------------------------------------------------
-  // Tool: supervisor_list_feedback
+  // Tool: suggestion_box_list_feedback
   // -------------------------------------------------------------------------
   server.tool(
-    "supervisor_list_feedback",
+    "suggestion_box_list_feedback",
     `List and filter feedback entries. Use this to review what agents have reported. Default: open items sorted by votes.`,
     listFeedbackSchema.shape,
     async ({ category, target_type, target_name, status, sort_by, limit }) => {
@@ -167,10 +167,10 @@ If similar feedback already exists, your submission becomes a vote on it instead
   );
 
   // -------------------------------------------------------------------------
-  // Tool: supervisor_dismiss_feedback
+  // Tool: suggestion_box_dismiss_feedback
   // -------------------------------------------------------------------------
   server.tool(
-    "supervisor_dismiss_feedback",
+    "suggestion_box_dismiss_feedback",
     `Dismiss a feedback entry (soft delete). Use when feedback is no longer relevant, was addressed, or is invalid.`,
     dismissFeedbackSchema.shape,
     async ({ feedback_id }) => {
@@ -187,10 +187,10 @@ If similar feedback already exists, your submission becomes a vote on it instead
   );
 
   // -------------------------------------------------------------------------
-  // Tool: supervisor_publish_to_github
+  // Tool: suggestion_box_publish_to_github
   // -------------------------------------------------------------------------
   server.tool(
-    "supervisor_publish_to_github",
+    "suggestion_box_publish_to_github",
     `Publish a feedback entry as a GitHub issue. Requires gh CLI to be authenticated. The issue includes the feedback description, vote count, impact estimates, and evidence from agents. The github_repo parameter overrides any repo stored on the feedback entry.`,
     publishToGithubSchema.shape,
     async ({ feedback_id, github_repo }) => {
@@ -229,17 +229,17 @@ If similar feedback already exists, your submission becomes a vote on it instead
   );
 
   // -------------------------------------------------------------------------
-  // Tool: supervisor_status
+  // Tool: suggestion_box_status
   // -------------------------------------------------------------------------
   server.tool(
-    "supervisor_status",
+    "suggestion_box_status",
     `Show feedback system statistics: total entries, by category, by status, top voted, and total estimated impact.`,
     {},
     async () => {
       try {
         const stats = await store.getStats();
         const lines = [
-          `supervisor status:`,
+          `suggestion-box status:`,
           `  Total feedback: ${stats.total}`,
           `  By category: ${Object.entries(stats.byCategory).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}`,
           `  By status: ${Object.entries(stats.byStatus).map(([k, v]) => `${k}=${v}`).join(", ") || "none"}`,

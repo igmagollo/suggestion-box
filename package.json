@@ -1,5 +1,5 @@
 {
-  "name": "supervisor",
+  "name": "suggestion-box",
   "version": "0.1.0",
   "description": "Centralized feedback registry MCP for coding agents and subagents.",
   "type": "module",
@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "supervisor": "dist/cli.mjs"
+    "suggestion-box": "dist/cli.mjs"
   },
   "files": ["dist", "README.md", "LICENSE"],
   "scripts": {
@@ -30,6 +30,6 @@
     "bun-types": "latest",
     "typescript": "^5.0.0"
   },
-  "keywords": ["mcp", "ai", "agent", "feedback", "feature-request", "supervisor"],
+  "keywords": ["mcp", "ai", "agent", "feedback", "feature-request", "suggestion-box"],
   "license": "MIT"
 }

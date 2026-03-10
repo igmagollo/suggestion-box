@@ -45,7 +45,7 @@ export function createGithubIssue(
     ...(evidenceLines ? ["", "### Evidence from agents", "", evidenceLines] : []),
     "",
     "---",
-    "*Submitted via [supervisor](https://github.com/anthropics/supervisor) — feedback registry for coding agents.*",
+    "*Submitted via [suggestion-box](https://github.com/anthropics/supervisor) — feedback registry for coding agents.*",
   ].join("\n");
 
   const title = `[${categoryLabel[feedback.category] ?? feedback.category}] ${feedback.content.slice(0, 80)}${feedback.content.length > 80 ? "..." : ""}`;
