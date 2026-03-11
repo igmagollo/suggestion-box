@@ -7,3 +7,7 @@ dist/
 bun.lock
 docs/
 .cachebro/
+.mcp.json
+.codex/
+opencode.json
+.worktrees/
