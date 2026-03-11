@@ -277,10 +277,20 @@ IMPORTANT RULES:
       metadata,
     }, voteRows);
 
+    // GitHub issue is created — attempt to mark feedback as published.
+    // If the DB update fails, log the URL so it's not silently lost; the
+    // issue already exists and a retry would find it via dedup.
     const now = Math.floor(Date.now() / 1000);
-    await db.prepare(
-      "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
-    ).run(result.url, now, feedbackId);
+    try {
+      await db.prepare(
+        "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
+      ).run(result.url, now, feedbackId);
+    } catch (dbErr: any) {
+      console.error(
+        `Warning: GitHub issue created (${result.url}) but DB update failed: ${dbErr.message}. ` +
+        `Re-publishing will find the existing issue via dedup.`
+      );
+    }
 
     if (result.deduplicated) {
       console.log(`Found existing issue #${result.existingIssueNumber} — added reaction and comment: ${result.url}`);
@@ -1011,10 +1021,20 @@ Tip: observation-category items rarely warrant a public GitHub issue — mention
 
       const result = createGithubIssue(repo, feedback, voteRows);
 
+      // GitHub issue is created — attempt to mark feedback as published.
+      // If the DB update fails, log the URL so it's not silently lost; the
+      // issue already exists and a retry would find it via dedup.
       const now = Math.floor(Date.now() / 1000);
-      await outerDb.prepare(
-        "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
-      ).run(result.url, now, feedback.id);
+      try {
+        await outerDb.prepare(
+          "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
+        ).run(result.url, now, feedback.id);
+      } catch (dbErr: any) {
+        console.error(
+          `Warning: GitHub issue created (${result.url}) but DB update failed: ${dbErr.message}. ` +
+          `Re-publishing will find the existing issue via dedup.`
+        );
+      }
 
       return result.url;
     };
