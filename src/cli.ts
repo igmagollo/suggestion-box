@@ -960,6 +960,81 @@ Tip: observation-category items rarely warrant a public GitHub issue — mention
     process.exit(1);
   }
 
+} else if (command === "review") {
+  const { runReview } = await import("./review.js");
+  const { checkGhAuth, createGithubIssue } = await import("./github.js");
+
+  await withDb(async (outerDb) => {
+    // We need a long-lived connection across multiple operations inside runReview.
+    // Re-use withDb's connection by passing raw DB operations as closures.
+
+    const listOpen = async (): Promise<any[]> => {
+      const rows = await outerDb.prepare(
+        "SELECT * FROM feedback WHERE status = 'open' ORDER BY votes DESC"
+      ).all() as any[];
+      return rows.map((r: any) => ({
+        id: r.id,
+        title: r.title ?? null,
+        content: r.content,
+        category: r.category,
+        targetType: r.target_type,
+        targetName: r.target_name,
+        githubRepo: r.github_repo ?? null,
+        status: r.status,
+        votes: r.votes,
+        estimatedTokensSaved: r.estimated_tokens_saved ?? null,
+        estimatedTimeSavedMinutes: r.estimated_time_saved_minutes ?? null,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at,
+        publishedIssueUrl: r.published_issue_url ?? null,
+        sessionId: r.session_id,
+        gitSha: r.git_sha ?? null,
+        metadata: r.metadata ? (() => { try { return JSON.parse(r.metadata); } catch { return null; } })() : null,
+      }));
+    };
+
+    const dismiss = async (id: string): Promise<boolean> => {
+      const now = Math.floor(Date.now() / 1000);
+      const result = await outerDb.prepare(
+        "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status = 'open'"
+      ).run(now, id);
+      return result.changes > 0;
+    };
+
+    const publish = async (feedback: any): Promise<string> => {
+      const repo = feedback.githubRepo;
+      if (!repo) throw new Error("No github_repo on this feedback entry.");
+
+      const voteRows = await outerDb.prepare(
+        "SELECT session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at FROM vote_log WHERE feedback_id = ?"
+      ).all(feedback.id) as any[];
+
+      const result = createGithubIssue(repo, feedback, voteRows);
+
+      const now = Math.floor(Date.now() / 1000);
+      await outerDb.prepare(
+        "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
+      ).run(result.url, now, feedback.id);
+
+      return result.url;
+    };
+
+    const updateTitle = async (id: string, title: string | null): Promise<void> => {
+      const now = Math.floor(Date.now() / 1000);
+      await outerDb.prepare(
+        "UPDATE feedback SET title = ?, updated_at = ? WHERE id = ?"
+      ).run(title, now, id);
+    };
+
+    await runReview({
+      listOpen,
+      dismiss,
+      publish,
+      updateTitle,
+      checkAuth: checkGhAuth,
+    });
+  });
+
 } else if (command === "help" || command === "--help") {
   console.log(`suggestion-box - Centralized feedback registry for coding agents
 
@@ -981,6 +1056,7 @@ Usage:
   suggestion-box dismiss <id>         Dismiss a feedback entry
   suggestion-box triage [--threshold N]
                                       Surface high-signal items (≥N votes, default: 3)
+  suggestion-box review               Interactive TUI for triaging feedback (p/e/d/s/q)
   suggestion-box purge                Delete dismissed entries
   suggestion-box doctor               Verify environment health
   suggestion-box help                 Show this help
