@@ -133,6 +133,31 @@ The published npm package is bundled for **Node.js** — `npx` works out of the 
 
 [Bun](https://bun.sh/) is only needed for **development** (building from source). If you clone the repo to contribute, install bun and run `bun run build`.
 
+## Known limitations
+
+### CLI commands and the MCP server cannot run at the same time
+
+suggestion-box uses an embedded [libSQL](https://github.com/tursodatabase/libsql) database. The libSQL driver acquires an **exclusive file lock** at connect time — before any WAL or busy-timeout pragma can be applied. This is a documented limitation of the driver: it does not support multi-process access.
+
+**In practice:** while the MCP server is running (i.e., your coding agent session is active), CLI commands that need database access (`status`, `list`, `submit`, `dismiss`, `publish`, `triage`, `review`, `purge`) will fail with a lock error and print a helpful message.
+
+**Workaround:** use MCP tools through your agent while the server is active:
+
+| CLI command | MCP tool equivalent |
+|-------------|---------------------|
+| `status` | `suggestion_box_status` |
+| `list` | `suggestion_box_list_feedback` |
+| `submit` | `suggestion_box_submit_feedback` |
+| `dismiss` | `suggestion_box_dismiss_feedback` |
+| `publish` | `suggestion_box_publish_to_github` |
+| `triage` | `suggestion_box_triage` |
+
+Or stop the MCP server (end your agent session) first, then use the CLI.
+
+CLI commands that don't touch the database (`init`, `uninit`, `hook`, `serve`, `doctor`, `help`) always work normally.
+
+A future version may add a CLI-to-server communication channel to remove this restriction.
+
 ## Badge
 
 Using suggestion-box? Add the badge to your README:

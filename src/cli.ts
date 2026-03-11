@@ -11,6 +11,42 @@ function getDbPath(): string {
   return join(dataDir, "feedback.db");
 }
 
+/**
+ * Check if an error is the libSQL exclusive file-lock error thrown when the
+ * MCP server is already running.  The Turso/libSQL driver acquires the lock at
+ * connect() time — before any PRAGMA can be applied — so WAL mode and
+ * busy_timeout cannot help here.  This is a documented limitation of the driver.
+ */
+function isDbLockError(e: unknown): boolean {
+  return (
+    e instanceof Error &&
+    (e.message.includes("Locking error") ||
+      e.message.includes("Failed locking file") ||
+      e.message.includes("SQLITE_BUSY") ||
+      e.message.includes("database is locked"))
+  );
+}
+
+/**
+ * Print a friendly message explaining the lock situation and how to work around
+ * it via MCP tools, then exit with code 1.
+ */
+function handleDbLockError(): never {
+  console.error(`
+The MCP server is currently running and holds the database lock.
+Use your agent's MCP tools instead:
+  • suggestion_box_list_feedback     — browse feedback
+  • suggestion_box_status            — overview stats
+  • suggestion_box_submit_feedback   — submit new feedback
+  • suggestion_box_dismiss_feedback  — dismiss entries
+  • suggestion_box_publish_to_github — publish as GitHub issue
+  • suggestion_box_triage            — auto-triage by vote count
+
+Or stop the MCP server first, then retry the CLI command.
+`.trim());
+  process.exit(1);
+}
+
 async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
   const { connect } = await import("@tursodatabase/database");
   const dbPath = getDbPath();
@@ -18,7 +54,13 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
     console.log("No suggestion-box database found. Run 'suggestion-box init' first.");
     process.exit(0);
   }
-  const db = await connect(dbPath);
+  let db: any;
+  try {
+    db = await connect(dbPath);
+  } catch (e) {
+    if (isDbLockError(e)) handleDbLockError();
+    throw e;
+  }
   await db.exec("PRAGMA journal_mode=WAL");
   await db.exec("PRAGMA busy_timeout = 5000");
   try {
@@ -331,7 +373,12 @@ IMPORTANT RULES:
     sessionId: randomUUID(),
     embed,
   });
-  await store.init();
+  try {
+    await store.init();
+  } catch (e) {
+    if (isDbLockError(e)) handleDbLockError();
+    throw e;
+  }
 
   try {
     const result = await store.submitFeedback({
@@ -370,6 +417,13 @@ IMPORTANT RULES:
     sessionId: randomUUID(),
     embed: async () => new Float32Array(0),
   });
+
+  try {
+    await triageStore.init();
+  } catch (e) {
+    if (isDbLockError(e)) handleDbLockError();
+    throw e;
+  }
 
   try {
     const result = await triageStore.autoTriage({ threshold });
@@ -873,9 +927,9 @@ Tip: observation-category items rarely warrant a public GitHub issue — mention
         checks.push({ name: "WAL mode", passed: false, message: `Could not check journal_mode: ${e.message}` });
       }
     } catch (e: any) {
-      if (e.message?.includes("Lock")) {
-        checks.push({ name: "Database", passed: true, message: `${dbPath} exists (locked by MCP server — this is normal)` });
-        checks.push({ name: "WAL mode", passed: true, message: "Skipped (server is running, WAL is active)" });
+      if (isDbLockError(e)) {
+        checks.push({ name: "Database", passed: true, message: `${dbPath} exists — locked by MCP server (this is normal; use MCP tools while the server is running)` });
+        checks.push({ name: "WAL mode", passed: true, message: "Skipped (MCP server is running; WAL is active)" });
       } else {
         checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
         checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
