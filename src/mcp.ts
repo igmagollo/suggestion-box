@@ -21,6 +21,8 @@ export async function startMcpServer(): Promise<void> {
   const embed = await createEmbedder();
 
   const sessionId = randomUUID();
+  const categories = getCategories();
+  const webhooks = getWebhooks();
   const store = createFeedbackStore({
     dbPath,
     sessionId,
@@ -30,9 +32,6 @@ export async function startMcpServer(): Promise<void> {
   });
 
   await store.init();
-
-  const categories = getCategories();
-  const webhooks = getWebhooks();
   const submitFeedbackSchema = createSubmitFeedbackSchema(categories);
   const listFeedbackSchema = createListFeedbackSchema(categories);
 

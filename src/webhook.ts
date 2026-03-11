@@ -50,8 +50,9 @@ export async function fireWebhook(url: string, payload: Record<string, unknown>)
         `[suggestion-box] webhook POST to ${url} failed: HTTP ${response.status}`
       );
     }
-  } catch (e: any) {
-    console.error(`[suggestion-box] webhook POST to ${url} error: ${e.message}`);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(`[suggestion-box] webhook POST to ${url} error: ${message}`);
   }
 }
 
