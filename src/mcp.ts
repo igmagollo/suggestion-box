@@ -9,6 +9,7 @@ import {
   upvoteFeedbackSchema,
   dismissFeedbackSchema,
   publishToGithubSchema,
+  triageSchema,
 } from "./schemas.js";
 import { getCategories } from "./categories.js";
 import { checkGhAuth, createGithubIssue } from "./github.js";
@@ -374,6 +375,49 @@ Start now: present **Item 1** and ask the user what to do.`;
           },
         ],
       };
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: suggestion_box_triage
+  // -------------------------------------------------------------------------
+  server.tool(
+    "suggestion_box_triage",
+    `Surface high-signal feedback by vote count. Returns open feedback items at or above the vote threshold (default: 3), sorted by votes descending. Use this to identify items that warrant attention without manual review of all entries.`,
+    triageSchema.shape,
+    async ({ threshold, limit }) => {
+      try {
+        const result = await store.autoTriage({ threshold, limit });
+
+        if (result.items.length === 0) {
+          return {
+            content: [{
+              type: "text" as const,
+              text: `No open feedback with ${result.threshold} or more votes found.`,
+            }],
+          };
+        }
+
+        let text = `${result.items.length} item(s) with ≥${result.threshold} votes (high-signal):\n\n`;
+        for (const item of result.items) {
+          const impact = [
+            item.estimatedTokensSaved ? `~${item.estimatedTokensSaved} tokens` : null,
+            item.estimatedTimeSavedMinutes ? `~${item.estimatedTimeSavedMinutes}min` : null,
+          ].filter(Boolean).join(", ");
+
+          text += `--- [${item.category}] ${item.votes} votes${impact ? ` | impact: ${impact}` : ""} ---\n`;
+          text += `ID: ${item.id}\n`;
+          text += `Target: ${item.targetType}/${item.targetName}`;
+          if (item.githubRepo) text += ` (repo: ${item.githubRepo})`;
+          text += "\n";
+          if (item.title) text += `Title: ${item.title}\n`;
+          text += `${item.content}\n\n`;
+        }
+
+        return { content: [{ type: "text" as const, text }] };
+      } catch (e: any) {
+        return { content: [{ type: "text" as const, text: `Error: ${e.message}` }], isError: true };
+      }
     },
   );
 

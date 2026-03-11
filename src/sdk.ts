@@ -17,6 +17,8 @@ export type {
   UpvoteInput,
   ListFeedbackInput,
   FeedbackStats,
+  TriageInput,
+  TriageResult,
 } from "./types.js";
 
 import { FeedbackStore } from "./store.js";

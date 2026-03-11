@@ -487,4 +487,113 @@ describe("FeedbackStore", () => {
       await store2.close();
     });
   });
+
+  describe("autoTriage", () => {
+    test("returns empty result when no items meet threshold", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      await store.submitFeedback(SAMPLE_INPUT); // 1 vote
+
+      const result = await store.autoTriage({ threshold: 3 });
+      expect(result.items).toHaveLength(0);
+      expect(result.threshold).toBe(3);
+      await store.close();
+    });
+
+    test("returns items at or above threshold", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const { feedbackId } = await store.submitFeedback(SAMPLE_INPUT); // 1 vote
+
+      // Upvote to reach threshold
+      await store.upvote({ feedbackId });
+      await store.upvote({ feedbackId });
+      // Now at 3 votes
+
+      const result = await store.autoTriage({ threshold: 3 });
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].id).toBe(feedbackId);
+      expect(result.items[0].votes).toBe(3);
+      await store.close();
+    });
+
+    test("does not include dismissed items", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const { feedbackId } = await store.submitFeedback(SAMPLE_INPUT);
+      await store.upvote({ feedbackId });
+      await store.upvote({ feedbackId }); // 3 votes
+
+      await store.dismiss(feedbackId);
+
+      const result = await store.autoTriage({ threshold: 3 });
+      expect(result.items).toHaveLength(0);
+      await store.close();
+    });
+
+    test("does not include published items", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const { feedbackId } = await store.submitFeedback(SAMPLE_INPUT);
+      await store.upvote({ feedbackId });
+      await store.upvote({ feedbackId }); // 3 votes
+
+      await store.markPublished(feedbackId, "https://github.com/org/repo/issues/1");
+
+      const result = await store.autoTriage({ threshold: 3 });
+      expect(result.items).toHaveLength(0);
+      await store.close();
+    });
+
+    test("sorts by votes descending", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+
+      const { feedbackId: id1 } = await store.submitFeedback(SAMPLE_INPUT);
+      await store.upvote({ feedbackId: id1 });
+      await store.upvote({ feedbackId: id1 }); // 3 votes
+
+      const { feedbackId: id2 } = await store.submitFeedback({
+        ...SAMPLE_INPUT,
+        content: "A completely different feedback item about connection pooling under load",
+        targetName: "other-server",
+      });
+      await store.upvote({ feedbackId: id2 });
+      await store.upvote({ feedbackId: id2 });
+      await store.upvote({ feedbackId: id2 });
+      await store.upvote({ feedbackId: id2 }); // 5 votes
+
+      const result = await store.autoTriage({ threshold: 3 });
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0].votes).toBe(5);
+      expect(result.items[1].votes).toBe(3);
+      await store.close();
+    });
+
+    test("uses default threshold of 3", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const { feedbackId } = await store.submitFeedback(SAMPLE_INPUT);
+      await store.upvote({ feedbackId });
+      await store.upvote({ feedbackId }); // 3 votes — meets default threshold
+
+      const result = await store.autoTriage(); // no threshold provided
+      expect(result.threshold).toBe(3);
+      expect(result.items).toHaveLength(1);
+      await store.close();
+    });
+
+    test("respects limit parameter", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+
+      // Create 3 high-vote items
+      for (let i = 0; i < 3; i++) {
+        const { feedbackId } = await store.submitFeedback({
+          ...SAMPLE_INPUT,
+          content: `Unique high-signal feedback item number ${i} with plenty of detail here`,
+          targetName: `server-${i}`,
+        });
+        await store.upvote({ feedbackId });
+        await store.upvote({ feedbackId }); // 3 votes each
+      }
+
+      const result = await store.autoTriage({ threshold: 3, limit: 2 });
+      expect(result.items).toHaveLength(2);
+      await store.close();
+    });
+  });
 });

@@ -107,3 +107,17 @@ export interface FeedbackStats {
   totalEstimatedTokensSaved: number;
   totalEstimatedTimeSavedMinutes: number;
 }
+
+export interface TriageInput {
+  /** Minimum vote count to include an item (default: 3) */
+  threshold?: number;
+  /** Max results (default: 20) */
+  limit?: number;
+}
+
+export interface TriageResult {
+  /** Feedback items at or above the vote threshold, sorted by votes descending */
+  items: Feedback[];
+  /** The threshold used */
+  threshold: number;
+}
