@@ -22,29 +22,9 @@ Each submission includes impact estimates (tokens saved, time saved) for priorit
 
 ## Demo
 
-<!-- TODO: Add demo GIF once recorded with: vhs demo/demo.tape -->
+![suggestion-box demo](demo/demo.gif)
 
-The [`demo/demo-script.sh`](demo/demo-script.sh) script walks through the full feedback loop — init, submit, list, status, publish, and dismiss — with realistic examples. Run it interactively or use it as the basis for a terminal recording.
-
-**Run interactively:**
-
-```bash
-bash demo/demo-script.sh
-```
-
-**Record with [VHS](https://github.com/charmbracelet/vhs):**
-
-```bash
-vhs demo/demo.tape
-```
-
-This produces `demo/demo.gif` — a ready-to-embed terminal recording.
-
-**Record with [asciinema](https://asciinema.org/):**
-
-```bash
-asciinema rec demo.cast -c 'bash demo/demo-script.sh'
-```
+Re-record with [VHS](https://github.com/charmbracelet/vhs): `vhs demo/demo.tape`
 
 ## Install
 
@@ -101,6 +81,7 @@ suggestion-box serve                # Start MCP server (default)
 suggestion-box init [dir]           # Set up for a project
 suggestion-box status               # Overview
 suggestion-box list [--category X] [--status X] [--target X]
+suggestion-box submit               # Submit feedback from the CLI
 suggestion-box publish <id> [repo]  # Publish as GitHub issue
 suggestion-box dismiss <id>         # Dismiss feedback
 suggestion-box purge                # Delete dismissed entries
