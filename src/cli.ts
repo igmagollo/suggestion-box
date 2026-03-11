@@ -34,6 +34,7 @@ const ALLOWED_TOOLS = [
   "mcp__suggestion-box__suggestion_box_list_feedback",
   "mcp__suggestion-box__suggestion_box_status",
   "mcp__suggestion-box__suggestion_box_dismiss_feedback",
+  "mcp__suggestion-box__suggestion_box_publish_to_github",
 ];
 
 function getCliCommand(): { command: string; args: string[] } {
@@ -499,6 +500,36 @@ enabled = true
     }
   }
 
+  // .claude/commands/suggestion-box/review.md — /review slash command
+  const commandsDir = join(claudeSettingsDir, "commands", "suggestion-box");
+  const reviewCmdPath = join(commandsDir, "review.md");
+  const reviewCmdContent = `---
+description: Triage all open suggestion-box feedback — publish, dismiss, or skip each item
+---
+Run the suggestion-box review flow: list all open feedback and triage each item one by one.
+
+Use the \`suggestion_box_list_feedback\` MCP tool (status: open, sort_by: votes) to load the queue, then for each item ask the user: **publish**, **dismiss**, **skip**, or **quit**.
+
+- **publish** → call \`suggestion_box_publish_to_github\` (ask for \`github_repo\` if missing)
+- **dismiss** → call \`suggestion_box_dismiss_feedback\`
+- **skip** → leave unchanged, move on
+- **quit** → stop and show summary
+
+After finishing, show a summary: how many published, dismissed, skipped, and links to any issues created.
+
+Tip: observation-category items rarely warrant a public GitHub issue — mention this when you encounter them.
+`;
+
+  if (dryRun) {
+    console.log(`${prefix}Would create .claude/commands/suggestion-box/review.md (/review slash command)`);
+  } else {
+    if (!existsSync(commandsDir)) mkdirSync(commandsDir, { recursive: true });
+    if (!existsSync(reviewCmdPath)) {
+      writeFileSync(reviewCmdPath, reviewCmdContent);
+      console.log("  Wrote .claude/commands/suggestion-box/review.md (/suggestion-box:review slash command)");
+    }
+  }
+
   if (dryRun) {
     console.log(`\n${prefix}No files were modified.`);
   } else {
@@ -629,6 +660,26 @@ enabled = true
         removed++;
       }
     } catch {}
+  }
+
+  // Remove .claude/commands/suggestion-box/review.md
+  const uninitReviewCmdPath = join(targetDir, ".claude", "commands", "suggestion-box", "review.md");
+  if (existsSync(uninitReviewCmdPath)) {
+    rmSync(uninitReviewCmdPath);
+    console.log("  Removed .claude/commands/suggestion-box/review.md");
+    // Clean up the suggestion-box commands dir if empty
+    try {
+      const sbCmdsDir = join(targetDir, ".claude", "commands", "suggestion-box");
+      if (readdirSync(sbCmdsDir).length === 0) {
+        rmSync(sbCmdsDir, { recursive: true });
+        // Clean up commands dir if empty too
+        const cmdsDir = join(targetDir, ".claude", "commands");
+        if (existsSync(cmdsDir) && readdirSync(cmdsDir).length === 0) {
+          rmSync(cmdsDir, { recursive: true });
+        }
+      }
+    } catch {}
+    removed++;
   }
 
   // Handle .suggestion-box directory
