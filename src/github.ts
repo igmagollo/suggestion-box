@@ -1,6 +1,12 @@
 import { execFileSync } from "child_process";
 import type { Feedback } from "./types.js";
 
+export interface GithubIssueResult {
+  url: string;
+  deduplicated: boolean;
+  existingIssueNumber?: number;
+}
+
 export function checkGhAuth(): boolean {
   try {
     execFileSync("gh", ["auth", "status"], { stdio: "pipe" });
@@ -10,11 +16,98 @@ export function checkGhAuth(): boolean {
   }
 }
 
+function extractKeywords(feedback: Feedback): string {
+  const source = feedback.title ?? feedback.content.split(/[.\n]/)[0].trim();
+  // Strip markdown-ish noise, keep meaningful words
+  return source
+    .replace(/[^\w\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2)
+    .slice(0, 8)
+    .join(" ");
+}
+
+interface ExistingIssue {
+  number: number;
+  title: string;
+  url: string;
+}
+
+function searchExistingIssues(repo: string, keywords: string): ExistingIssue | null {
+  try {
+    const raw = execFileSync(
+      "gh",
+      ["issue", "list", "--repo", repo, "--search", keywords, "--state", "open", "--json", "number,title,url", "--limit", "5"],
+      { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+    );
+    const issues: ExistingIssue[] = JSON.parse(raw.trim() || "[]");
+    // Skip issues created by suggestion-box (they have our tag in the title)
+    const match = issues.find((i) => !i.title.includes("[Friction Report]") && !i.title.includes("[Feature Request]") && !i.title.includes("[Observation]"));
+    return match ?? null;
+  } catch {
+    // Search failed — proceed with creation
+    return null;
+  }
+}
+
+function reactAndComment(
+  repo: string,
+  issueNumber: number,
+  feedback: Feedback,
+  voteLog: Array<{ evidence: string | null; sessionId: string; createdAt: number }>,
+): void {
+  // Add 👍 reaction
+  try {
+    execFileSync(
+      "gh",
+      ["api", "--method", "POST", `repos/${repo}/issues/${issueNumber}/reactions`, "-f", "content=+1"],
+      { stdio: "pipe" },
+    );
+  } catch {
+    // Reaction may already exist or lack permissions — not critical
+  }
+
+  // Post a comment with vote count and evidence
+  const evidenceLines = voteLog
+    .filter((v) => v.evidence)
+    .map((v) => `> ${v.evidence}`)
+    .join("\n\n");
+
+  const commentBody = [
+    `**suggestion-box** detected this as related feedback.`,
+    "",
+    `**Votes:** ${feedback.votes}`,
+    ...(evidenceLines ? ["", "### Evidence from agents", "", evidenceLines] : []),
+    "",
+    "---",
+    "*Posted via [suggestion-box](https://github.com/igmagollo/suggestion-box)*",
+  ].join("\n");
+
+  try {
+    execFileSync(
+      "gh",
+      ["issue", "comment", String(issueNumber), "--repo", repo, "--body", commentBody],
+      { stdio: "pipe" },
+    );
+  } catch {
+    // Comment failed — not critical
+  }
+}
+
 export function createGithubIssue(
   repo: string,
   feedback: Feedback,
   voteLog: Array<{ evidence: string | null; sessionId: string; createdAt: number }>,
-): string {
+): GithubIssueResult {
+  // Search for existing similar issues before creating a new one
+  const keywords = extractKeywords(feedback);
+  if (keywords) {
+    const existing = searchExistingIssues(repo, keywords);
+    if (existing) {
+      reactAndComment(repo, existing.number, feedback, voteLog);
+      return { url: existing.url, deduplicated: true, existingIssueNumber: existing.number };
+    }
+  }
   const impactLines: string[] = [];
   if (feedback.estimatedTokensSaved) {
     impactLines.push(`- Estimated tokens saved: **${feedback.estimatedTokensSaved}**`);
@@ -78,5 +171,5 @@ export function createGithubIssue(
 
   const result = execFileSync("gh", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
 
-  return result.trim();
+  return { url: result.trim(), deduplicated: false };
 }

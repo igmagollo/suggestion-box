@@ -217,11 +217,17 @@ If similar feedback already exists, your submission becomes a vote on it instead
         }
 
         const voteLog = await store.getVoteLog(feedback_id);
-        const issueUrl = createGithubIssue(repo, item, voteLog);
-        await store.markPublished(feedback_id, issueUrl);
+        const result = createGithubIssue(repo, item, voteLog);
+        await store.markPublished(feedback_id, result.url);
+
+        if (result.deduplicated) {
+          return {
+            content: [{ type: "text" as const, text: `Found existing issue #${result.existingIssueNumber} — added 👍 reaction and comment instead of creating a duplicate: ${result.url}` }],
+          };
+        }
 
         return {
-          content: [{ type: "text" as const, text: `Published as GitHub issue: ${issueUrl}` }],
+          content: [{ type: "text" as const, text: `Published as GitHub issue: ${result.url}` }],
         };
       } catch (e: any) {
         return { content: [{ type: "text" as const, text: `Error: ${e.message}` }], isError: true };
