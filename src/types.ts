@@ -4,7 +4,12 @@ export type EmbedFn = (text: string) => Promise<Float32Array>;
 /** Turso vector type for distance calculations. */
 export type VectorType = "vector32" | "vector64" | "vector8" | "vector1";
 
-export type FeedbackCategory = "friction" | "feature_request" | "observation";
+/**
+ * Feedback category. The three built-in values are "friction",
+ * "feature_request", and "observation", but projects can define
+ * custom categories in `.suggestion-box/config.json`.
+ */
+export type FeedbackCategory = string;
 
 export type TargetType = "mcp_server" | "tool" | "codebase" | "workflow" | "general";
 

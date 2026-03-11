@@ -4,12 +4,13 @@ import { createFeedbackStore } from "./sdk.js";
 import { createEmbedder } from "./embedder.js";
 import { randomUUID } from "crypto";
 import {
-  submitFeedbackSchema,
+  createSubmitFeedbackSchema,
+  createListFeedbackSchema,
   upvoteFeedbackSchema,
-  listFeedbackSchema,
   dismissFeedbackSchema,
   publishToGithubSchema,
 } from "./schemas.js";
+import { getCategories } from "./categories.js";
 import { checkGhAuth, createGithubIssue } from "./github.js";
 import { assertValidConfig } from "./config.js";
 import { RateLimiter, RateLimitError } from "./rate-limiter.js";
@@ -29,6 +30,10 @@ export async function startMcpServer(): Promise<void> {
 
   await store.init();
 
+  const categories = getCategories();
+  const submitFeedbackSchema = createSubmitFeedbackSchema(categories);
+  const listFeedbackSchema = createListFeedbackSchema(categories);
+
   const rateLimiter = new RateLimiter();
 
   const server = new McpServer({
@@ -42,6 +47,8 @@ export async function startMcpServer(): Promise<void> {
   server.tool(
     "suggestion_box_submit_feedback",
     `Submit feedback about a tool, MCP server, codebase, or workflow.
+
+Configured categories: ${categories.join(", ")}
 
 Use category "friction" when you:
 - Hit a limitation that slowed you down

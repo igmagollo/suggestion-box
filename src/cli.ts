@@ -2,6 +2,7 @@
 import { startMcpServer } from "./mcp.js";
 import { resolve, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from "fs";
+import { DEFAULT_CATEGORIES, getCategories } from "./categories.js";
 
 const command = process.argv[2];
 
@@ -46,8 +47,11 @@ function timeAgo(epochSec: number): string {
 if (command === "hook") {
   const event = process.argv[3];
   if (event === "session-start") {
+    const cats = getCategories();
     console.log(`<suggestion-box>
 You have access to the suggestion-box MCP — a feedback registry for improving your workspace.
+
+Configured categories: ${cats.join(", ")}
 
 BE PROACTIVE. Throughout your work, actively look for opportunities to submit feedback:
 
@@ -267,6 +271,17 @@ IMPORTANT RULES:
       console.log(`${prefix}Would create ${dataDir}/`);
     } else {
       mkdirSync(dataDir, { recursive: true });
+    }
+  }
+
+  // Write default config.json with categories
+  const configJsonPath = join(dataDir, "config.json");
+  if (!existsSync(configJsonPath)) {
+    if (dryRun) {
+      console.log(`${prefix}Would create config.json with default categories`);
+    } else {
+      writeFileSync(configJsonPath, JSON.stringify({ categories: [...DEFAULT_CATEGORIES] }, null, 2) + "\n");
+      console.log("  Wrote .suggestion-box/config.json (default categories)");
     }
   }
 
@@ -564,7 +579,8 @@ Usage:
   suggestion-box purge                Delete dismissed entries
   suggestion-box help                 Show this help
 
-Categories: friction, feature_request, observation
+Categories (default): friction, feature_request, observation
+  Customize in .suggestion-box/config.json: { "categories": ["friction", "feature_request", "observation", "bug", "praise"] }
 Targets: mcp_server, tool, codebase, workflow, general
 Statuses: open, published, dismissed
 
