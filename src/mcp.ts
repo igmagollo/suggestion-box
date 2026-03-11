@@ -13,7 +13,8 @@ import {
   preTriageSchema,
 } from "./schemas.js";
 import { getCategories, getWebhooks } from "./categories.js";
-import { checkGhAuth, createGithubIssue, extractKeywords, keywordSimilarity } from "./github.js";
+import { execFileSync } from "child_process";
+import { checkGhAuth, createGithubIssue, extractKeywords, keywordSimilarity, isSuggestionBoxIssueTitle } from "./github.js";
 import { assertValidConfig } from "./config.js";
 import { RateLimiter, RateLimitError } from "./rate-limiter.js";
 
@@ -226,8 +227,8 @@ If similar feedback already exists, your submission becomes a vote on it instead
         }
 
         const item = await store.getFeedbackById(feedback_id);
-        if (!item || item.status !== "open") {
-          return { content: [{ type: "text" as const, text: `Feedback ${feedback_id} not found or not open.` }], isError: true };
+        if (!item || (item.status !== "open" && item.status !== "pending_review")) {
+          return { content: [{ type: "text" as const, text: `Feedback ${feedback_id} not found or not in a publishable state (must be open or pending_review).` }], isError: true };
         }
 
         const repo = github_repo ?? item.githubRepo;
@@ -459,7 +460,6 @@ Returns a structured report of groups with representative items, vote totals, im
             const keywords = extractKeywords(group.representative);
             if (!keywords) continue;
             try {
-              const { execFileSync } = await import("child_process");
               const raw = execFileSync(
                 "gh",
                 ["issue", "list", "--repo", github_repo, "--search", `${keywords} in:title`, "--state", "open", "--json", "number,title,url", "--limit", "5"],
@@ -468,7 +468,7 @@ Returns a structured report of groups with representative items, vote totals, im
               const issues: Array<{ number: number; title: string; url: string }> = JSON.parse(raw.trim() || "[]");
               const SIMILARITY_THRESHOLD = 0.3;
               for (const issue of issues) {
-                if (keywordSimilarity(keywords, issue.title) >= SIMILARITY_THRESHOLD) {
+                if (!isSuggestionBoxIssueTitle(issue.title) && keywordSimilarity(keywords, issue.title) >= SIMILARITY_THRESHOLD) {
                   group.existingGithubIssueUrl = issue.url;
                   group.existingGithubIssueNumber = issue.number;
                   break;
