@@ -257,6 +257,59 @@ IMPORTANT RULES:
     }
   });
 
+} else if (command === "submit") {
+  const submitArgs = process.argv.slice(3);
+  // Parse flags
+  let category = "", targetType = "", targetName = "", content = "", title = "", githubRepo = "";
+  for (let i = 0; i < submitArgs.length; i++) {
+    if (submitArgs[i] === "--category" && submitArgs[i + 1]) category = submitArgs[++i];
+    else if (submitArgs[i] === "--target-type" && submitArgs[i + 1]) targetType = submitArgs[++i];
+    else if (submitArgs[i] === "--target-name" && submitArgs[i + 1]) targetName = submitArgs[++i];
+    else if (submitArgs[i] === "--content" && submitArgs[i + 1]) content = submitArgs[++i];
+    else if (submitArgs[i] === "--title" && submitArgs[i + 1]) title = submitArgs[++i];
+    else if (submitArgs[i] === "--repo" && submitArgs[i + 1]) githubRepo = submitArgs[++i];
+  }
+
+  if (!category || !targetType || !targetName || !content) {
+    console.error("Usage: suggestion-box submit --category <cat> --target-type <type> --target-name <name> --content <text>");
+    console.error("  Required: --category, --target-type, --target-name, --content");
+    console.error("  Optional: --title, --repo");
+    console.error("\n  Categories: friction, feature_request, observation");
+    console.error("  Target types: mcp_server, tool, codebase, workflow, general");
+    process.exit(1);
+  }
+
+  const { createFeedbackStore } = await import("./sdk.js");
+  const { createEmbedder } = await import("./embedder.js");
+  const { randomUUID } = await import("crypto");
+
+  const embed = await createEmbedder();
+  const store = createFeedbackStore({
+    dbPath: getDbPath(),
+    sessionId: randomUUID(),
+    embed,
+  });
+  await store.init();
+
+  try {
+    const result = await store.submitFeedback({
+      category: category as any,
+      title: title || undefined,
+      content,
+      targetType: targetType as any,
+      targetName: targetName,
+      githubRepo: githubRepo || undefined,
+    });
+
+    if (result.isDuplicate) {
+      console.log(`Similar feedback exists (${result.feedbackId}). Recorded as vote. Total votes: ${result.votes}.`);
+    } else {
+      console.log(`Feedback submitted (${result.feedbackId}).`);
+    }
+  } finally {
+    store.close();
+  }
+
 } else if (command === "purge") {
   await withDb(async (db) => {
     const result = await db.prepare("DELETE FROM feedback WHERE status = 'dismissed'").run();
@@ -771,6 +824,9 @@ Usage:
   suggestion-box hook <event>         Run a hook (session-start)
   suggestion-box status               Overview: counts, top voted, impact
   suggestion-box list [--category X] [--status X] [--target X]
+  suggestion-box submit               Submit feedback from the command line
+                                      --category, --target-type, --target-name, --content (required)
+                                      --title, --repo (optional)
   suggestion-box publish <id> [repo]  Publish feedback as GitHub issue
   suggestion-box dismiss <id>         Dismiss a feedback entry
   suggestion-box purge                Delete dismissed entries

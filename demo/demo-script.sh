@@ -63,33 +63,33 @@ pause
 # Submit feedback (simulating what agents do via MCP tools)
 # ---------------------------------------------------------------------------
 step "3. Submit feedback — friction report"
-echo '$ npx @igmagollo/suggestion-box hook submit \'
+echo '$ npx @igmagollo/suggestion-box submit \'
 echo '    --category friction \'
 echo '    --target-type tool --target-name "file-search" \'
 echo '    --content "The file search tool times out on large monorepos with more than 10k files. Had to fall back to manual grep which cost ~2 minutes per search."'
-npx -y @igmagollo/suggestion-box@latest hook submit \
+npx -y @igmagollo/suggestion-box@latest submit \
   --category friction \
   --target-type tool --target-name "file-search" \
   --content "The file search tool times out on large monorepos with more than 10k files. Had to fall back to manual grep which cost ~2 minutes per search."
 pause
 
 step "4. Submit feedback — feature request"
-echo '$ npx @igmagollo/suggestion-box hook submit \'
+echo '$ npx @igmagollo/suggestion-box submit \'
 echo '    --category feature_request \'
 echo '    --target-type tool --target-name "code-search" \'
 echo '    --content "Code search should support regex patterns natively. Currently I have to search for a broad term and then filter results manually, which wastes tokens and time."'
-npx -y @igmagollo/suggestion-box@latest hook submit \
+npx -y @igmagollo/suggestion-box@latest submit \
   --category feature_request \
   --target-type tool --target-name "code-search" \
   --content "Code search should support regex patterns natively. Currently I have to search for a broad term and then filter results manually, which wastes tokens and time."
 pause
 
 step "5. Submit feedback — observation"
-echo '$ npx @igmagollo/suggestion-box hook submit \'
+echo '$ npx @igmagollo/suggestion-box submit \'
 echo '    --category observation \'
 echo '    --target-type workflow --target-name "pr-review" \'
 echo '    --content "The PR review workflow could benefit from a summary step. Most reviews jump straight into line comments without a high-level overview of what changed and why."'
-npx -y @igmagollo/suggestion-box@latest hook submit \
+npx -y @igmagollo/suggestion-box@latest submit \
   --category observation \
   --target-type workflow --target-name "pr-review" \
   --content "The PR review workflow could benefit from a summary step. Most reviews jump straight into line comments without a high-level overview of what changed and why."
@@ -128,9 +128,10 @@ pause
 # Dismiss feedback
 # ---------------------------------------------------------------------------
 step "9. Dismiss feedback"
-echo "Dismissing the observation (ID 3):"
-echo '$ npx @igmagollo/suggestion-box dismiss 3'
-npx -y @igmagollo/suggestion-box@latest dismiss 3 2>/dev/null || echo "(dismissed)"
+LAST_ID=$(npx -y @igmagollo/suggestion-box@latest list 2>/dev/null | grep '^ID:' | tail -1 | awk '{print $2}')
+echo "Dismissing feedback $LAST_ID:"
+echo "$ npx @igmagollo/suggestion-box dismiss $LAST_ID"
+npx -y @igmagollo/suggestion-box@latest dismiss "$LAST_ID" 2>/dev/null || echo "(dismissed)"
 pause
 
 # ---------------------------------------------------------------------------
