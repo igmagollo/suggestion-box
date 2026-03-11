@@ -1,6 +1,6 @@
 {
   "name": "@igmagollo/suggestion-box",
-  "version": "0.1.4",
+  "version": "0.3.0",
   "description": "Centralized feedback registry MCP for coding agents and subagents.",
   "repository": {
     "type": "git",
