@@ -212,7 +212,7 @@ IMPORTANT RULES:
   await withDb(async (db) => {
     const now = Math.floor(Date.now() / 1000);
     const result = await db.prepare(
-      "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status = 'open'"
+      "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status IN ('open', 'pending_review')"
     ).run(now, feedbackId);
     if (result.changes > 0) {
       console.log(`Feedback ${feedbackId} dismissed.`);

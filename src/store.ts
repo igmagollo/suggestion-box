@@ -400,7 +400,7 @@ export class FeedbackStore {
     const now = Math.floor(Date.now() / 1000);
     return this.withDb(async (db) => {
       const result = await db.prepare(
-        "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status = 'open'"
+        "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status IN ('open', 'pending_review')"
       ).run(now, feedbackId);
       return result.changes > 0;
     });
