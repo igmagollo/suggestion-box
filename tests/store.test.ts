@@ -596,4 +596,28 @@ describe("FeedbackStore", () => {
       await store.close();
     });
   });
+
+  describe("concurrent access (WAL mode)", () => {
+    test("persistent-mode store and a short-lived store can coexist on the same DB", async () => {
+      // Simulates the real-world scenario: MCP server holds a persistent connection
+      // while a CLI command opens a short-lived connection to the same database.
+      // This is the core fix for issue #149.
+      const serverStore = new FeedbackStore(createConfig(dbPath, { persistent: true }));
+      await serverStore.init();
+
+      // CLI-style: open, read, close
+      const cliStore = new FeedbackStore(createConfig(dbPath, { persistent: false }));
+      const statsBefore = await cliStore.getStats();
+      expect(statsBefore.total).toBe(0);
+
+      // Submit via the persistent store (MCP server side)
+      await serverStore.submitFeedback(SAMPLE_INPUT);
+
+      // Read via the short-lived store (CLI side) — must not fail with a lock error
+      const statsAfter = await cliStore.getStats();
+      expect(statsAfter.total).toBe(1);
+
+      await serverStore.close();
+    });
+  });
 });
