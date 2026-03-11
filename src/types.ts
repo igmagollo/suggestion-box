@@ -1,7 +1,10 @@
 /** User-provided embedding function. Takes text, returns a vector. */
 export type EmbedFn = (text: string) => Promise<Float32Array>;
 
-/** Turso vector type for distance calculations. */
+/**
+ * @deprecated No longer used — vector distance is now computed in JavaScript.
+ * Kept for backward compatibility with existing SDK users.
+ */
 export type VectorType = "vector32" | "vector64" | "vector8" | "vector1";
 
 /**
@@ -35,7 +38,10 @@ export interface SupervisorConfig {
   sessionId: string;
   /** Embedding function — SDK users provide their own */
   embed: EmbedFn;
-  /** Vector type for distance calculations (default: "vector32") */
+  /**
+   * @deprecated No longer used — vector distance is now computed in JavaScript.
+   * Kept for backward compatibility with existing SDK users.
+   */
   vectorType?: VectorType;
   /** Cosine similarity threshold for dedup (default: 0.85) */
   dedupThreshold?: number;
