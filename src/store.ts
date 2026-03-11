@@ -1,5 +1,6 @@
 import { connect } from "@tursodatabase/database";
 import { randomUUID } from "crypto";
+import { execSync } from "child_process";
 import { isTrigramMode, trigramSimilarity, DEFAULT_TRIGRAM_THRESHOLD } from "./embedder.js";
 import type {
   SupervisorConfig,
@@ -37,7 +38,8 @@ CREATE TABLE IF NOT EXISTS feedback (
     created_at                  INTEGER NOT NULL,
     updated_at                  INTEGER NOT NULL,
     published_issue_url         TEXT,
-    session_id                  TEXT NOT NULL
+    session_id                  TEXT NOT NULL,
+    git_sha                     TEXT
 );
 
 CREATE TABLE IF NOT EXISTS vote_log (
@@ -142,19 +144,32 @@ export class FeedbackStore {
     if (this.initialized) return;
     await this.withDb(async (db) => {
       await db.exec(SCHEMA);
-      // Migrate existing databases: add columns if missing
-      try {
-        await db.exec("ALTER TABLE feedback ADD COLUMN title TEXT");
-      } catch {
-        // Column already exists — ignore
-      }
-      try {
-        await db.exec("ALTER TABLE feedback ADD COLUMN session_id TEXT NOT NULL DEFAULT ''");
-      } catch {
-        // Column already exists — ignore
+      // Migrate existing databases: add missing columns
+      for (const migration of [
+        "ALTER TABLE feedback ADD COLUMN title TEXT",
+        "ALTER TABLE feedback ADD COLUMN git_sha TEXT",
+        "ALTER TABLE feedback ADD COLUMN session_id TEXT NOT NULL DEFAULT ''",
+      ]) {
+        try {
+          await db.exec(migration);
+        } catch {
+          // Column already exists — ignore
+        }
       }
     });
     this.initialized = true;
+  }
+
+  /**
+   * Resolve the current git HEAD SHA. Returns null if not in a git repo
+   * or if git is unavailable.
+   */
+  private resolveGitSha(): string | null {
+    try {
+      return execSync("git rev-parse HEAD", { encoding: "utf-8", timeout: 5000 }).trim() || null;
+    } catch {
+      return null;
+    }
   }
 
   private get vfn(): string {
@@ -164,6 +179,7 @@ export class FeedbackStore {
   async submitFeedback(input: SubmitFeedbackInput): Promise<SubmitFeedbackResult> {
     await this.init();
     const now = Math.floor(Date.now() / 1000);
+    const gitSha = input.gitSha ?? this.resolveGitSha();
 
     const duplicate = this.useTrigramDedup
       ? await this.findSimilarByTrigram(input.content, input.targetType, input.targetName)
@@ -193,13 +209,13 @@ export class FeedbackStore {
 
     await this.withDb(async (db) => {
       await db.prepare(
-        `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?)`
+        `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id, git_sha)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?, ?)`
       ).run(
         id, input.title ?? null, input.content, embedding ? vecBuf(embedding) : null, input.category, input.targetType,
         input.targetName, input.githubRepo ?? null,
         input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null,
-        now, now, this.sessionId
+        now, now, this.sessionId, gitSha
       );
 
       await db.prepare(
@@ -284,6 +300,7 @@ export class FeedbackStore {
       updatedAt: row.updated_at,
       publishedIssueUrl: row.published_issue_url,
       sessionId: row.session_id,
+      gitSha: row.git_sha ?? null,
     };
   }
 

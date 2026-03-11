@@ -43,6 +43,7 @@ export interface Feedback {
   updatedAt: number;
   publishedIssueUrl: string | null;
   sessionId: string;
+  gitSha: string | null;
 }
 
 export interface SubmitFeedbackInput {
@@ -54,6 +55,7 @@ export interface SubmitFeedbackInput {
   githubRepo?: string;
   estimatedTokensSaved?: number;
   estimatedTimeSavedMinutes?: number;
+  gitSha?: string;
 }
 
 export interface SubmitFeedbackResult {

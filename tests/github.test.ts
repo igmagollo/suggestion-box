@@ -19,6 +19,7 @@ function makeFeedback(overrides: Partial<Feedback> = {}): Feedback {
     updatedAt: 1000,
     publishedIssueUrl: null,
     sessionId: "test-session",
+    gitSha: null,
     ...overrides,
   };
 }

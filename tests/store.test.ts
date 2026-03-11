@@ -96,6 +96,29 @@ describe("FeedbackStore", () => {
       expect(feedback!.estimatedTokensSaved).toBe(500);
       expect(feedback!.estimatedTimeSavedMinutes).toBe(10);
       expect(feedback!.sessionId).toBe("test-session");
+      expect(feedback!.gitSha).toBeTypeOf("string"); // auto-detected from git repo
+      await store.close();
+    });
+
+    test("stores explicit git_sha when provided", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const result = await store.submitFeedback({
+        ...SAMPLE_INPUT,
+        gitSha: "abc123def456",
+      });
+
+      const feedback = await store.getFeedbackById(result.feedbackId);
+      expect(feedback!.gitSha).toBe("abc123def456");
+      await store.close();
+    });
+
+    test("auto-detects git SHA when not provided", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const result = await store.submitFeedback(SAMPLE_INPUT);
+
+      const feedback = await store.getFeedbackById(result.feedbackId);
+      // We're running inside a git repo, so SHA should be a 40-char hex string
+      expect(feedback!.gitSha).toMatch(/^[0-9a-f]{40}$/);
       await store.close();
     });
   });
