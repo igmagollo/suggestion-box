@@ -34,6 +34,8 @@ export function createGithubIssue(
     observation: "Observation",
   };
 
+  const categoryTag = feedback.category === "feature_request" ? "enhancement" : feedback.category;
+
   const body = [
     `## ${categoryLabel[feedback.category] ?? feedback.category}`,
     "",
@@ -45,13 +47,23 @@ export function createGithubIssue(
     ...(evidenceLines ? ["", "### Evidence from agents", "", evidenceLines] : []),
     "",
     "---",
-    "*Submitted via [suggestion-box](https://github.com/anthropics/supervisor) — feedback registry for coding agents.*",
+    "*Submitted via [suggestion-box](https://github.com/igmagollo/suggestion-box) — feedback registry for coding agents.*",
   ].join("\n");
 
   const title = `[${categoryLabel[feedback.category] ?? feedback.category}] ${feedback.content.slice(0, 80)}${feedback.content.length > 80 ? "..." : ""}`;
 
+  // Try to create labels (ignore failures — labels may already exist or user may lack permissions)
+  const labels = [categoryTag, "suggestion-box"];
+  for (const label of labels) {
+    try {
+      execSync(`gh label create ${JSON.stringify(label)} --repo ${JSON.stringify(repo)} --force`, { stdio: "pipe" });
+    } catch {}
+  }
+
+  const labelArgs = labels.map(l => `--label ${JSON.stringify(l)}`).join(" ");
+
   const result = execSync(
-    `gh issue create --repo ${JSON.stringify(repo)} --title ${JSON.stringify(title)} --body ${JSON.stringify(body)}`,
+    `gh issue create --repo ${JSON.stringify(repo)} --title ${JSON.stringify(title)} --body ${JSON.stringify(body)} ${labelArgs}`,
     { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
   );
 

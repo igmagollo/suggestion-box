@@ -1,0 +1,25 @@
+name: Observation
+description: A pattern, inefficiency, or improvement you noticed
+labels: ["observation", "suggestion-box"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What did you notice?
+      description: Describe the observation
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      description: "What tool/MCP/workflow does this relate to? (e.g., mcp_server/suggestion-box)"
+    validations:
+      required: false
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: Suggested improvement
+      description: How could this be better?
+    validations:
+      required: false

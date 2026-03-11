@@ -1,0 +1,25 @@
+name: Feature Request
+description: A capability you wish existed or an improvement you envision
+labels: ["enhancement", "suggestion-box"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What do you need?
+      description: Describe the feature or improvement
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      description: "What tool/MCP/workflow would this improve? (e.g., mcp_server/suggestion-box)"
+    validations:
+      required: false
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Use case
+      description: When would you use this? What problem does it solve?
+    validations:
+      required: false

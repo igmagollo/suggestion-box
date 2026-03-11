@@ -29,7 +29,7 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
 function getCliCommand(): { command: string; args: string[] } {
   const execPath = process.argv[1] ?? "";
   if (execPath.includes("node_modules")) {
-    return { command: "npx", args: ["-y", "@igmagollo/suggestion-box"] };
+    return { command: "npx", args: ["-y", "@igmagollo/suggestion-box@latest"] };
   }
   return { command: "bun", args: [resolve(execPath)] };
 }
@@ -62,8 +62,10 @@ BE PROACTIVE. Throughout your work, actively look for opportunities to submit fe
 IMPORTANT RULES:
 - Include estimated_tokens_saved and/or estimated_time_saved_minutes when you can — this helps prioritize.
 - Include github_repo when the feedback targets an open-source tool (e.g., "upstash/context7").
+- For feedback about suggestion-box itself, use target_type: "mcp_server", target_name: "suggestion-box", github_repo: "igmagollo/suggestion-box".
 - The system auto-deduplicates: if similar feedback exists, your submission becomes a vote. No need to check first.
 - Do NOT hold back. Even small friction is worth reporting. The more data, the better the workspace gets.
+- Actively evaluate the tools you use — including suggestion-box itself. If something is confusing, slow, or missing, report it.
 - Subagents: you inherit this MCP. Use it. Your feedback is equally valuable.
 </suggestion-box>`);
   }

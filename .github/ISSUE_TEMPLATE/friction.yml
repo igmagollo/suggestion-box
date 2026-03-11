@@ -1,0 +1,25 @@
+name: Friction Report
+description: Something slowed you down, was confusing, or gave insufficient context
+labels: ["friction", "suggestion-box"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the friction you encountered
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: Target
+      description: "What tool/MCP/workflow was involved? (e.g., mcp_server/suggestion-box)"
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: How much time or effort did this cost you?
+    validations:
+      required: false
