@@ -12,20 +12,24 @@ import {
 } from "./schemas.js";
 import { checkGhAuth, createGithubIssue } from "./github.js";
 import { assertValidConfig } from "./config.js";
+import { RateLimiter, RateLimitError } from "./rate-limiter.js";
 
 export async function startMcpServer(): Promise<void> {
   const { dataDir, dbPath } = assertValidConfig();
 
   const embed = await createEmbedder();
 
+  const sessionId = randomUUID();
   const store = createFeedbackStore({
     dbPath,
-    sessionId: randomUUID(),
+    sessionId,
     embed,
     persistent: true,
   });
 
   await store.init();
+
+  const rateLimiter = new RateLimiter();
 
   const server = new McpServer({
     name: "suggestion-box",
@@ -56,6 +60,8 @@ If similar feedback already exists, your submission becomes a vote on it instead
     submitFeedbackSchema.shape,
     async ({ category, title, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes, git_sha, tool_version }) => {
       try {
+        rateLimiter.check(sessionId);
+
         store.embedPending().catch((e) => console.error("[suggestion-box] embedPending error:", e));
 
         const result = await store.submitFeedback({
@@ -101,6 +107,8 @@ If similar feedback already exists, your submission becomes a vote on it instead
     upvoteFeedbackSchema.shape,
     async ({ feedback_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes }) => {
       try {
+        rateLimiter.check(sessionId);
+
         const result = await store.upvote({
           feedbackId: feedback_id,
           evidence,
