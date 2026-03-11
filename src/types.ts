@@ -17,6 +17,17 @@ export type FeedbackStatus = "open" | "published" | "dismissed";
 
 export type SortBy = "votes" | "recent" | "impact";
 
+export interface WebhookConfig {
+  /** Webhook URL — supports Slack incoming webhooks, Discord webhooks, or any generic HTTP endpoint. */
+  url: string;
+  /**
+   * Vote count threshold. The webhook fires the first time a feedback item's
+   * vote count crosses this value (transitions from below to >= threshold).
+   * Default: 3.
+   */
+  voteThreshold?: number;
+}
+
 export interface SupervisorConfig {
   /** Path to the Turso database file */
   dbPath: string;
@@ -30,6 +41,11 @@ export interface SupervisorConfig {
   dedupThreshold?: number;
   /** Use a persistent DB connection instead of open/close per operation (default: false) */
   persistent?: boolean;
+  /**
+   * Webhook endpoints to ping when feedback crosses a vote threshold.
+   * Each webhook fires exactly once per threshold crossing.
+   */
+  webhooks?: WebhookConfig[];
 }
 
 /** Version metadata captured at feedback submission time. */
