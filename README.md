@@ -28,6 +28,18 @@ No special runtime required — the published package runs on **Node.js** (v18+)
 npx @igmagollo/suggestion-box init .
 ```
 
+### Homebrew (macOS)
+
+```bash
+brew install igmagollo/tap/suggestion-box
+```
+
+Then initialize in your project:
+
+```bash
+suggestion-box init .
+```
+
 This creates a `.suggestion-box/` data directory (local SQLite + vector DB), configures your coding agents, and updates `.gitignore`. Restart your agent to activate.
 
 ## Cross-agent compatibility
