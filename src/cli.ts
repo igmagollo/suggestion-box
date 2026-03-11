@@ -66,6 +66,36 @@ if (command === "hook") {
       const desc = categoryDescriptions[cat] ?? `When you encounter something worth reporting as "${cat}"`;
       return `${i + 1}. **${label}** — ${desc}:\n   suggestion_box_submit_feedback(category: "${cat}", content: "describe what happened", target_type: ..., target_name: ...)`;
     }).join("\n\n");
+
+    // Attempt to load a digest of top-voted open friction items.
+    // Gracefully skip if the DB doesn't exist or is locked by the MCP server.
+    let frictionDigest = "";
+    const dbPath = getDbPath();
+    if (existsSync(dbPath)) {
+      try {
+        const { connect } = await import("@tursodatabase/database");
+        const db = await connect(dbPath);
+        try {
+          await db.exec("PRAGMA journal_mode=WAL");
+          await db.exec("PRAGMA busy_timeout = 1000");
+          const rows = await db.prepare(
+            "SELECT title, content, votes, target_type, target_name FROM feedback WHERE status = 'open' AND category = 'friction' ORDER BY votes DESC LIMIT 5"
+          ).all() as any[];
+          if (rows.length > 0) {
+            const items = rows.map((r: any, i: number) => {
+              const label = r.title ?? (r.content.length > 80 ? r.content.slice(0, 80) + "…" : r.content);
+              return `  ${i + 1}. [${r.votes} vote${r.votes !== 1 ? "s" : ""}] ${r.target_type}/${r.target_name}: ${label}`;
+            }).join("\n");
+            frictionDigest = `\n\nKNOWN FRICTION (top-voted open issues — avoid repeating these mistakes):\n${items}`;
+          }
+        } finally {
+          db.close();
+        }
+      } catch {
+        // DB locked by MCP server or inaccessible — skip digest silently
+      }
+    }
+
     console.log(`<suggestion-box>
 You have access to the suggestion-box MCP — a feedback registry for improving your workspace.
 
@@ -82,7 +112,7 @@ IMPORTANT RULES:
 - The system auto-deduplicates: if similar feedback exists, your submission becomes a vote. No need to check first.
 - Do NOT hold back. Even small friction is worth reporting. The more data, the better the workspace gets.
 - Actively evaluate the tools you use — including suggestion-box itself. If something is confusing, slow, or missing, report it.
-- Subagents: you inherit this MCP. Use it. Your feedback is equally valuable.
+- Subagents: you inherit this MCP. Use it. Your feedback is equally valuable.${frictionDigest}
 </suggestion-box>`);
   }
   // Other hook events are no-ops for now
