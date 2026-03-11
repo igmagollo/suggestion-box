@@ -1,6 +1,6 @@
 # Homebrew Setup
 
-The `docs/formula/suggestion-box.rb` file in this repo is a **reference template**. For Homebrew to actually serve the formula, it needs to live in a dedicated tap repository on GitHub.
+The `homebrew/suggestion-box.rb` file in this repo is a **reference template**. For Homebrew to actually serve the formula, it needs to live in a dedicated tap repository on GitHub.
 
 ## Setting up the tap repo
 
