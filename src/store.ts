@@ -2,9 +2,11 @@ import { connect } from "@tursodatabase/database";
 import { randomUUID } from "crypto";
 import { execSync } from "child_process";
 import { isTrigramMode, trigramSimilarity, DEFAULT_TRIGRAM_THRESHOLD } from "./embedder.js";
+import { getSuggestionBoxVersion } from "./version.js";
 import type {
   SupervisorConfig,
   Feedback,
+  FeedbackMetadata,
   FeedbackStatus,
   SubmitFeedbackInput,
   SubmitFeedbackResult,
@@ -39,7 +41,8 @@ CREATE TABLE IF NOT EXISTS feedback (
     updated_at                  INTEGER NOT NULL,
     published_issue_url         TEXT,
     session_id                  TEXT NOT NULL,
-    git_sha                     TEXT
+    git_sha                     TEXT,
+    metadata                    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS vote_log (
@@ -149,6 +152,7 @@ export class FeedbackStore {
         "ALTER TABLE feedback ADD COLUMN title TEXT",
         "ALTER TABLE feedback ADD COLUMN git_sha TEXT",
         "ALTER TABLE feedback ADD COLUMN session_id TEXT NOT NULL DEFAULT ''",
+        "ALTER TABLE feedback ADD COLUMN metadata TEXT",
       ]) {
         try {
           await db.exec(migration);
@@ -207,15 +211,23 @@ export class FeedbackStore {
     const id = randomUUID();
     const embedding = this.useTrigramDedup ? null : await this.embed(input.content);
 
+    const metadata: FeedbackMetadata = {
+      suggestionBoxVersion: getSuggestionBoxVersion(),
+    };
+    if (input.toolVersion) {
+      metadata.toolVersion = input.toolVersion;
+    }
+    const metadataJson = JSON.stringify(metadata);
+
     await this.withDb(async (db) => {
       await db.prepare(
-        `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id, git_sha)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id, git_sha, metadata)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
         id, input.title ?? null, input.content, embedding ? vecBuf(embedding) : null, input.category, input.targetType,
         input.targetName, input.githubRepo ?? null,
         input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null,
-        now, now, this.sessionId, gitSha
+        now, now, this.sessionId, gitSha, metadataJson
       );
 
       await db.prepare(
@@ -284,6 +296,15 @@ export class FeedbackStore {
   }
 
   private rowToFeedback(row: any): Feedback {
+    let metadata: FeedbackMetadata | null = null;
+    if (row.metadata) {
+      try {
+        metadata = JSON.parse(row.metadata);
+      } catch {
+        // Corrupted JSON — treat as null
+      }
+    }
+
     return {
       id: row.id,
       title: row.title ?? null,
@@ -301,6 +322,7 @@ export class FeedbackStore {
       publishedIssueUrl: row.published_issue_url,
       sessionId: row.session_id,
       gitSha: row.git_sha ?? null,
+      metadata,
     };
   }
 

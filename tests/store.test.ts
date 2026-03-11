@@ -121,6 +121,40 @@ describe("FeedbackStore", () => {
       expect(feedback!.gitSha).toMatch(/^[0-9a-f]{40}$/);
       await store.close();
     });
+
+    test("captures metadata with suggestion-box version", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const result = await store.submitFeedback(SAMPLE_INPUT);
+
+      const feedback = await store.getFeedbackById(result.feedbackId);
+      expect(feedback!.metadata).not.toBeNull();
+      expect(feedback!.metadata!.suggestionBoxVersion).toBeTruthy();
+      await store.close();
+    });
+
+    test("captures tool version when provided", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const result = await store.submitFeedback({
+        ...SAMPLE_INPUT,
+        toolVersion: "2.5.0",
+      });
+
+      const feedback = await store.getFeedbackById(result.feedbackId);
+      expect(feedback!.metadata).not.toBeNull();
+      expect(feedback!.metadata!.toolVersion).toBe("2.5.0");
+      expect(feedback!.metadata!.suggestionBoxVersion).toBeTruthy();
+      await store.close();
+    });
+
+    test("metadata omits toolVersion when not provided", async () => {
+      const store = new FeedbackStore(createConfig(dbPath));
+      const result = await store.submitFeedback(SAMPLE_INPUT);
+
+      const feedback = await store.getFeedbackById(result.feedbackId);
+      expect(feedback!.metadata).not.toBeNull();
+      expect(feedback!.metadata!.toolVersion).toBeUndefined();
+      await store.close();
+    });
   });
 
   describe("trigram dedup", () => {
