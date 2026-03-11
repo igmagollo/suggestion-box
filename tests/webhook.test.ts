@@ -35,10 +35,10 @@ describe("maybeFireWebhooks", () => {
 
     // Monkey-patch global fetch for this test
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (url: any, init: any) => {
+    globalThis.fetch = (async (url: any, init: any) => {
       fired.push({ url: String(url), payload: JSON.parse(init.body) });
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       await maybeFireWebhooks(makeFeedback(3), 2, [
@@ -59,10 +59,10 @@ describe("maybeFireWebhooks", () => {
   test("does not fire when votes are already above threshold", async () => {
     const fired: string[] = [];
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (url: any, _init: any) => {
+    globalThis.fetch = (async (url: any, _init: any) => {
       fired.push(String(url));
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       // prevVotes=5 is already >= threshold=3, so no crossing
@@ -78,10 +78,10 @@ describe("maybeFireWebhooks", () => {
   test("does not fire when votes stay below threshold", async () => {
     const fired: string[] = [];
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (url: any, _init: any) => {
+    globalThis.fetch = (async (url: any, _init: any) => {
       fired.push(String(url));
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       // prevVotes=1, newVotes=2, threshold=5 — not crossed
@@ -97,10 +97,10 @@ describe("maybeFireWebhooks", () => {
   test("uses default threshold of 3 when not specified", async () => {
     const fired: string[] = [];
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (url: any, _init: any) => {
+    globalThis.fetch = (async (url: any, _init: any) => {
       fired.push(String(url));
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       // No voteThreshold specified — should default to 3
@@ -116,10 +116,10 @@ describe("maybeFireWebhooks", () => {
   test("fires multiple webhooks with different thresholds independently", async () => {
     const fired: string[] = [];
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (url: any, _init: any) => {
+    globalThis.fetch = (async (url: any, _init: any) => {
       fired.push(String(url));
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       // newVotes=3 crosses threshold=3 but not threshold=5
@@ -137,10 +137,10 @@ describe("maybeFireWebhooks", () => {
   test("fires all webhooks when multiple thresholds are crossed simultaneously", async () => {
     const fired: string[] = [];
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (url: any, _init: any) => {
+    globalThis.fetch = (async (url: any, _init: any) => {
       fired.push(String(url));
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       // newVotes=10 crosses both threshold=3 and threshold=5
@@ -157,10 +157,10 @@ describe("maybeFireWebhooks", () => {
   test("payload includes feedback id, votes, category, and content preview", async () => {
     let capturedPayload: Record<string, unknown> | null = null;
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async (_url: any, init: any) => {
+    globalThis.fetch = (async (_url: any, init: any) => {
       capturedPayload = JSON.parse(init.body);
       return new Response("ok", { status: 200 });
-    };
+    }) as typeof fetch;
 
     try {
       const feedback = makeFeedback(3);
@@ -183,7 +183,7 @@ describe("maybeFireWebhooks", () => {
 describe("fireWebhook", () => {
   test("does not throw on HTTP error responses", async () => {
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async () => new Response("error", { status: 500 });
+    globalThis.fetch = (async () => new Response("error", { status: 500 })) as unknown as typeof fetch;
 
     try {
       // Should resolve without throwing
@@ -195,7 +195,7 @@ describe("fireWebhook", () => {
 
   test("does not throw on network errors", async () => {
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async () => { throw new Error("ECONNREFUSED"); };
+    globalThis.fetch = (async () => { throw new Error("ECONNREFUSED"); }) as unknown as typeof fetch;
 
     try {
       // Should resolve without throwing
