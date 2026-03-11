@@ -338,6 +338,21 @@ IMPORTANT RULES:
     }
   }
 
+  // Create (or migrate) the database so `doctor` passes immediately after init
+  const dbPath = join(dataDir, "feedback.db");
+  if (dryRun) {
+    if (!existsSync(dbPath)) {
+      console.log(`${prefix}Would create database at ${dbPath}`);
+    }
+  } else {
+    const dbExists = existsSync(dbPath);
+    const { initDb } = await import("./store.js");
+    await initDb(dbPath);
+    if (!dbExists) {
+      console.log("  Initialized database (.suggestion-box/feedback.db)");
+    }
+  }
+
   // Write default config.json with categories
   const configJsonPath = join(dataDir, "config.json");
   if (!existsSync(configJsonPath)) {
@@ -731,7 +746,7 @@ enabled = true
       db?.close();
     }
   } else {
-    checks.push({ name: "Database", passed: false, message: `${dbPath} not found. Run 'suggestion-box init' and start the server once to create it.` });
+    checks.push({ name: "Database", passed: false, message: `${dbPath} not found. Run 'suggestion-box init' to create it.` });
     checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not found)" });
   }
 
