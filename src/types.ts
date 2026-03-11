@@ -75,6 +75,7 @@ export interface ListFeedbackInput {
   targetType?: TargetType;
   targetName?: string;
   status?: FeedbackStatus;
+  sessionId?: string;
   sortBy?: SortBy;
   limit?: number;
 }

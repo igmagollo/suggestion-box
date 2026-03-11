@@ -132,13 +132,14 @@ If similar feedback already exists, your submission becomes a vote on it instead
     "suggestion_box_list_feedback",
     `List and filter feedback entries. Use this to review what agents have reported. Default: open items sorted by votes.`,
     listFeedbackSchema.shape,
-    async ({ category, target_type, target_name, status, sort_by, limit }) => {
+    async ({ category, target_type, target_name, status, session_id, sort_by, limit }) => {
       try {
         const items = await store.listFeedback({
           category,
           targetType: target_type,
           targetName: target_name,
           status: status ?? "open",
+          sessionId: session_id,
           sortBy: sort_by,
           limit,
         });

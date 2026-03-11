@@ -23,6 +23,7 @@ export const listFeedbackSchema = z.object({
   target_type: z.enum(["mcp_server", "tool", "codebase", "workflow", "general"]).optional().describe("Filter by target type"),
   target_name: z.string().optional().describe("Filter by target name"),
   status: z.enum(["open", "published", "dismissed"]).optional().describe("Filter by status (default: open)"),
+  session_id: z.string().optional().describe("Filter by session ID"),
   sort_by: z.enum(["votes", "recent", "impact"]).optional().describe("Sort order (default: votes)"),
   limit: z.coerce.number().optional().describe("Max results (default: 20)"),
 });
