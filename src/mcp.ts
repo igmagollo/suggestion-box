@@ -30,6 +30,7 @@ export async function startMcpServer(): Promise<void> {
     dbPath,
     sessionId: randomUUID(),
     embed,
+    persistent: true,
   });
 
   await store.init();
@@ -271,8 +272,10 @@ If similar feedback already exists, your submission becomes a vote on it instead
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  process.on("SIGINT", () => {
+  const shutdown = () => {
     store.close();
     process.exit(0);
-  });
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
