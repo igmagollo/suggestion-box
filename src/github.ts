@@ -1,9 +1,9 @@
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 import type { Feedback } from "./types.js";
 
 export function checkGhAuth(): boolean {
   try {
-    execSync("gh auth status", { stdio: "pipe" });
+    execFileSync("gh", ["auth", "status"], { stdio: "pipe" });
     return true;
   } catch {
     return false;
@@ -50,22 +50,28 @@ export function createGithubIssue(
     "*Submitted via [suggestion-box](https://github.com/igmagollo/suggestion-box) — feedback registry for coding agents.*",
   ].join("\n");
 
-  const title = `[${categoryLabel[feedback.category] ?? feedback.category}] ${feedback.content.slice(0, 80)}${feedback.content.length > 80 ? "..." : ""}`;
+  // Title: first sentence or first 80 chars of content, whichever is shorter
+  const firstSentence = feedback.content.split(/[.\n]/)[0].trim();
+  const summary = firstSentence.length > 80 ? firstSentence.slice(0, 77) + "..." : firstSentence;
+  const title = `[${categoryLabel[feedback.category] ?? feedback.category}] ${summary}`;
 
   // Try to create labels (ignore failures — labels may already exist or user may lack permissions)
   const labels = [categoryTag, "suggestion-box"];
   for (const label of labels) {
     try {
-      execSync(`gh label create ${JSON.stringify(label)} --repo ${JSON.stringify(repo)} --force`, { stdio: "pipe" });
+      execFileSync("gh", ["label", "create", label, "--repo", repo, "--force"], { stdio: "pipe" });
     } catch {}
   }
 
-  const labelArgs = labels.map(l => `--label ${JSON.stringify(l)}`).join(" ");
+  const args = [
+    "issue", "create",
+    "--repo", repo,
+    "--title", title,
+    "--body", body,
+    ...labels.flatMap(l => ["--label", l]),
+  ];
 
-  const result = execSync(
-    `gh issue create --repo ${JSON.stringify(repo)} --title ${JSON.stringify(title)} --body ${JSON.stringify(body)} ${labelArgs}`,
-    { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
-  );
+  const result = execFileSync("gh", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
 
   return result.trim();
 }
