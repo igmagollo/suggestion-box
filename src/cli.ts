@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { startMcpServer } from "./mcp.js";
 import { resolve, join } from "path";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from "fs";
 
 const command = process.argv[2];
 
@@ -226,11 +226,20 @@ IMPORTANT RULES:
   });
 
 } else if (command === "init") {
-  const targetDir = resolve(process.argv[3] ?? ".");
+  const initArgs = process.argv.slice(3);
+  const dryRun = initArgs.includes("--dry-run");
+  const targetDir = resolve(initArgs.find(a => a !== "--dry-run") ?? ".");
   const cli = getCliCommand();
+  const prefix = dryRun ? "[dry-run] " : "";
 
   const dataDir = join(targetDir, ".suggestion-box");
-  if (!existsSync(dataDir)) mkdirSync(dataDir, { recursive: true });
+  if (!existsSync(dataDir)) {
+    if (dryRun) {
+      console.log(`${prefix}Would create ${dataDir}/`);
+    } else {
+      mkdirSync(dataDir, { recursive: true });
+    }
+  }
 
   const gitignorePath = join(targetDir, ".gitignore");
   const ignoreEntries = [".suggestion-box/", ".mcp.json", ".codex/", "opencode.json"];
@@ -238,99 +247,255 @@ IMPORTANT RULES:
     let content = readFileSync(gitignorePath, "utf-8");
     const missing = ignoreEntries.filter(e => !content.includes(e));
     if (missing.length > 0) {
-      writeFileSync(gitignorePath, content.trimEnd() + "\n" + missing.join("\n") + "\n");
+      if (dryRun) {
+        console.log(`${prefix}Would append to .gitignore: ${missing.join(", ")}`);
+      } else {
+        writeFileSync(gitignorePath, content.trimEnd() + "\n" + missing.join("\n") + "\n");
+      }
     }
   } else {
-    writeFileSync(gitignorePath, ignoreEntries.join("\n") + "\n");
+    if (dryRun) {
+      console.log(`${prefix}Would create .gitignore with: ${ignoreEntries.join(", ")}`);
+    } else {
+      writeFileSync(gitignorePath, ignoreEntries.join("\n") + "\n");
+    }
   }
 
   const mcpJsonPath = join(targetDir, ".mcp.json");
-  let mcpConfig: any = {};
-  if (existsSync(mcpJsonPath)) {
-    try { mcpConfig = JSON.parse(readFileSync(mcpJsonPath, "utf-8")); } catch {}
+  if (dryRun) {
+    console.log(`${prefix}Would write .mcp.json (Claude Code)`);
+  } else {
+    let mcpConfig: any = {};
+    if (existsSync(mcpJsonPath)) {
+      try { mcpConfig = JSON.parse(readFileSync(mcpJsonPath, "utf-8")); } catch {}
+    }
+    if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
+    mcpConfig.mcpServers["suggestion-box"] = {
+      command: cli.command,
+      args: [...cli.args, "serve"],
+      env: { SUGGESTION_BOX_DIR: ".suggestion-box" },
+    };
+    writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n");
+    console.log("  Wrote .mcp.json (Claude Code)");
   }
-  if (!mcpConfig.mcpServers) mcpConfig.mcpServers = {};
-  mcpConfig.mcpServers["suggestion-box"] = {
-    command: cli.command,
-    args: [...cli.args, "serve"],
-    env: { SUGGESTION_BOX_DIR: ".suggestion-box" },
-  };
-  writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n");
-  console.log("  Wrote .mcp.json (Claude Code)");
 
   const codexDir = join(targetDir, ".codex");
-  if (!existsSync(codexDir)) mkdirSync(codexDir, { recursive: true });
   const codexTomlPath = join(codexDir, "config.toml");
-  let codexContent = "";
-  if (existsSync(codexTomlPath)) {
-    codexContent = readFileSync(codexTomlPath, "utf-8");
-  }
-  if (!codexContent.includes("[mcp_servers.suggestion-box]")) {
-    const codexArgs = [...cli.args, "serve"].map(a => `"${a}"`).join(", ");
-    codexContent += `
+  if (dryRun) {
+    console.log(`${prefix}Would write .codex/config.toml (Codex)`);
+  } else {
+    if (!existsSync(codexDir)) mkdirSync(codexDir, { recursive: true });
+    let codexContent = "";
+    if (existsSync(codexTomlPath)) {
+      codexContent = readFileSync(codexTomlPath, "utf-8");
+    }
+    if (!codexContent.includes("[mcp_servers.suggestion-box]")) {
+      const codexArgs = [...cli.args, "serve"].map(a => `"${a}"`).join(", ");
+      codexContent += `
 [mcp_servers.suggestion-box]
 command = "${cli.command}"
 args = [${codexArgs}]
 env = { SUGGESTION_BOX_DIR = ".suggestion-box" }
 enabled = true
 `;
-    writeFileSync(codexTomlPath, codexContent.trimStart());
-    console.log("  Wrote .codex/config.toml (Codex)");
+      writeFileSync(codexTomlPath, codexContent.trimStart());
+      console.log("  Wrote .codex/config.toml (Codex)");
+    }
   }
 
   const opencodePath = join(targetDir, "opencode.json");
-  let opencodeConfig: any = {};
-  if (existsSync(opencodePath)) {
-    try { opencodeConfig = JSON.parse(readFileSync(opencodePath, "utf-8")); } catch {}
+  if (dryRun) {
+    console.log(`${prefix}Would write opencode.json (OpenCode)`);
+  } else {
+    let opencodeConfig: any = {};
+    if (existsSync(opencodePath)) {
+      try { opencodeConfig = JSON.parse(readFileSync(opencodePath, "utf-8")); } catch {}
+    }
+    if (!opencodeConfig.mcp) opencodeConfig.mcp = {};
+    opencodeConfig.mcp["suggestion-box"] = {
+      type: "local",
+      command: [cli.command, ...cli.args, "serve"],
+      environment: { SUGGESTION_BOX_DIR: ".suggestion-box" },
+      enabled: true,
+    };
+    writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + "\n");
+    console.log("  Wrote opencode.json (OpenCode)");
   }
-  if (!opencodeConfig.mcp) opencodeConfig.mcp = {};
-  opencodeConfig.mcp["suggestion-box"] = {
-    type: "local",
-    command: [cli.command, ...cli.args, "serve"],
-    environment: { SUGGESTION_BOX_DIR: ".suggestion-box" },
-    enabled: true,
-  };
-  writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + "\n");
-  console.log("  Wrote opencode.json (OpenCode)");
 
   // Claude Code hooks — ~/.claude/settings.json
   const claudeDir = join(process.env.HOME ?? "~", ".claude");
   const settingsPath = join(claudeDir, "settings.json");
-  if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
 
-  let settings: any = {};
+  if (dryRun) {
+    let settings: any = {};
+    if (existsSync(settingsPath)) {
+      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
+    }
+    const existing: any[] = settings?.hooks?.SessionStart ?? [];
+    const hasHook = existing.some((h: any) =>
+      h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
+    );
+    if (!hasHook) {
+      console.log(`${prefix}Would install SessionStart hook in ~/.claude/settings.json`);
+    } else {
+      console.log(`${prefix}SessionStart hook already present in ~/.claude/settings.json`);
+    }
+  } else {
+    if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+
+    let settings: any = {};
+    if (existsSync(settingsPath)) {
+      try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
+    }
+    if (!settings.hooks) settings.hooks = {};
+
+    const hookCmd = cli.command === "suggestion-box"
+      ? "suggestion-box hook session-start"
+      : `${cli.command} ${cli.args.join(" ")} hook session-start`;
+
+    const existing: any[] = settings.hooks.SessionStart ?? [];
+    const hasHook = existing.some((h: any) =>
+      h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
+    );
+
+    if (!hasHook) {
+      existing.push({
+        hooks: [{ type: "command", command: hookCmd, timeout: 10 }],
+      });
+      settings.hooks.SessionStart = existing;
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+      console.log("  Installed SessionStart hook (~/.claude/settings.json)");
+    }
+  }
+
+  if (dryRun) {
+    console.log(`\n${prefix}No files were modified.`);
+  } else {
+    console.log(`\nsuggestion-box initialized in ${targetDir}`);
+    console.log("Restart your coding agent to activate.");
+  }
+
+} else if (command === "uninit") {
+  const uninitArgs = process.argv.slice(3);
+  const keepData = uninitArgs.includes("--keep-data");
+  const targetDir = resolve(uninitArgs.find(a => !a.startsWith("--")) ?? ".");
+
+  let removed = 0;
+
+  // Remove suggestion-box from .mcp.json
+  const mcpJsonPath = join(targetDir, ".mcp.json");
+  if (existsSync(mcpJsonPath)) {
+    try {
+      const mcpConfig = JSON.parse(readFileSync(mcpJsonPath, "utf-8"));
+      if (mcpConfig.mcpServers?.["suggestion-box"]) {
+        delete mcpConfig.mcpServers["suggestion-box"];
+        if (Object.keys(mcpConfig.mcpServers).length === 0) {
+          rmSync(mcpJsonPath);
+          console.log("  Removed .mcp.json (was empty)");
+        } else {
+          writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n");
+          console.log("  Removed suggestion-box from .mcp.json");
+        }
+        removed++;
+      }
+    } catch {}
+  }
+
+  // Remove suggestion-box from .codex/config.toml
+  const codexTomlPath = join(targetDir, ".codex", "config.toml");
+  if (existsSync(codexTomlPath)) {
+    let codexContent = readFileSync(codexTomlPath, "utf-8");
+    const sectionRegex = /\n?\[mcp_servers\.suggestion-box\]\n(?:.*\n)*?(?=\[|$)/;
+    if (codexContent.includes("[mcp_servers.suggestion-box]")) {
+      codexContent = codexContent.replace(sectionRegex, "");
+      if (codexContent.trim() === "") {
+        rmSync(codexTomlPath);
+        // Remove .codex dir if empty
+        try {
+          const codexDir = join(targetDir, ".codex");
+          if (readdirSync(codexDir).length === 0) rmSync(codexDir, { recursive: true });
+        } catch {}
+        console.log("  Removed .codex/config.toml (was empty)");
+      } else {
+        writeFileSync(codexTomlPath, codexContent.trimStart());
+        console.log("  Removed suggestion-box from .codex/config.toml");
+      }
+      removed++;
+    }
+  }
+
+  // Remove suggestion-box from opencode.json
+  const opencodePath = join(targetDir, "opencode.json");
+  if (existsSync(opencodePath)) {
+    try {
+      const opencodeConfig = JSON.parse(readFileSync(opencodePath, "utf-8"));
+      if (opencodeConfig.mcp?.["suggestion-box"]) {
+        delete opencodeConfig.mcp["suggestion-box"];
+        if (Object.keys(opencodeConfig.mcp).length === 0 && Object.keys(opencodeConfig).length === 1) {
+          rmSync(opencodePath);
+          console.log("  Removed opencode.json (was empty)");
+        } else {
+          writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + "\n");
+          console.log("  Removed suggestion-box from opencode.json");
+        }
+        removed++;
+      }
+    } catch {}
+  }
+
+  // Remove SessionStart hook from ~/.claude/settings.json
+  const claudeDir = join(process.env.HOME ?? "~", ".claude");
+  const settingsPath = join(claudeDir, "settings.json");
   if (existsSync(settingsPath)) {
-    try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
-  }
-  if (!settings.hooks) settings.hooks = {};
-
-  const hookCmd = cli.command === "suggestion-box"
-    ? "suggestion-box hook session-start"
-    : `${cli.command} ${cli.args.join(" ")} hook session-start`;
-
-  const existing: any[] = settings.hooks.SessionStart ?? [];
-  const hasHook = existing.some((h: any) =>
-    h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
-  );
-
-  if (!hasHook) {
-    existing.push({
-      hooks: [{ type: "command", command: hookCmd, timeout: 10 }],
-    });
-    settings.hooks.SessionStart = existing;
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-    console.log("  Installed SessionStart hook (~/.claude/settings.json)");
+    try {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      const sessionStart: any[] = settings?.hooks?.SessionStart ?? [];
+      const filtered = sessionStart.filter((h: any) =>
+        !h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
+      );
+      if (filtered.length !== sessionStart.length) {
+        if (filtered.length === 0) {
+          delete settings.hooks.SessionStart;
+          if (Object.keys(settings.hooks).length === 0) delete settings.hooks;
+        } else {
+          settings.hooks.SessionStart = filtered;
+        }
+        writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+        console.log("  Removed SessionStart hook from ~/.claude/settings.json");
+        removed++;
+      }
+    } catch {}
   }
 
-  console.log(`\nsuggestion-box initialized in ${targetDir}`);
-  console.log("Restart your coding agent to activate.");
+  // Handle .suggestion-box directory
+  const dataDir = join(targetDir, ".suggestion-box");
+  if (existsSync(dataDir)) {
+    if (keepData) {
+      console.log("  Kept .suggestion-box/ data directory (--keep-data)");
+    } else {
+      rmSync(dataDir, { recursive: true });
+      console.log("  Deleted .suggestion-box/ data directory");
+      removed++;
+    }
+  }
+
+  if (removed === 0) {
+    console.log("Nothing to remove — suggestion-box doesn't appear to be initialized here.");
+  } else {
+    console.log(`\nsuggestion-box removed from ${targetDir}`);
+  }
 
 } else if (command === "help" || command === "--help") {
   console.log(`suggestion-box - Centralized feedback registry for coding agents
 
 Usage:
   suggestion-box serve                Start the MCP server (default)
-  suggestion-box init [dir]           Set up supervisor for a project (MCP + hooks)
+  suggestion-box init [dir] [--dry-run]
+                                      Set up suggestion-box for a project (MCP + hooks)
+                                      --dry-run: preview changes without writing anything
+  suggestion-box uninit [dir] [--keep-data]
+                                      Remove suggestion-box config from a project
+                                      --keep-data: keep .suggestion-box/ data directory
   suggestion-box hook <event>         Run a hook (session-start)
   suggestion-box status               Overview: counts, top voted, impact
   suggestion-box list [--category X] [--status X] [--target X]
