@@ -251,7 +251,7 @@ IMPORTANT RULES:
   mcpConfig.mcpServers["suggestion-box"] = {
     command: cli.command,
     args: [...cli.args, "serve"],
-    env: { SUGGESTION_BOX_DIR: join(targetDir, ".suggestion-box") },
+    env: { SUGGESTION_BOX_DIR: ".suggestion-box" },
   };
   writeFileSync(mcpJsonPath, JSON.stringify(mcpConfig, null, 2) + "\n");
   console.log("  Wrote .mcp.json (Claude Code)");
@@ -269,7 +269,7 @@ IMPORTANT RULES:
 [mcp_servers.suggestion-box]
 command = "${cli.command}"
 args = [${codexArgs}]
-env = { SUGGESTION_BOX_DIR = "${join(targetDir, ".suggestion-box")}" }
+env = { SUGGESTION_BOX_DIR = ".suggestion-box" }
 enabled = true
 `;
     writeFileSync(codexTomlPath, codexContent.trimStart());
@@ -285,36 +285,39 @@ enabled = true
   opencodeConfig.mcp["suggestion-box"] = {
     type: "local",
     command: [cli.command, ...cli.args, "serve"],
-    environment: { SUGGESTION_BOX_DIR: join(targetDir, ".suggestion-box") },
+    environment: { SUGGESTION_BOX_DIR: ".suggestion-box" },
     enabled: true,
   };
   writeFileSync(opencodePath, JSON.stringify(opencodeConfig, null, 2) + "\n");
   console.log("  Wrote opencode.json (OpenCode)");
 
   // Claude Code hooks — ~/.claude/settings.json
-  const settingsPath = join(process.env.HOME ?? "~", ".claude", "settings.json");
+  const claudeDir = join(process.env.HOME ?? "~", ".claude");
+  const settingsPath = join(claudeDir, "settings.json");
+  if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+
+  let settings: any = {};
   if (existsSync(settingsPath)) {
-    let settings: any = {};
     try { settings = JSON.parse(readFileSync(settingsPath, "utf-8")); } catch {}
-    if (!settings.hooks) settings.hooks = {};
+  }
+  if (!settings.hooks) settings.hooks = {};
 
-    const hookCmd = cli.command === "suggestion-box"
-      ? "suggestion-box hook session-start"
-      : `${cli.command} ${cli.args.join(" ")} hook session-start`;
+  const hookCmd = cli.command === "suggestion-box"
+    ? "suggestion-box hook session-start"
+    : `${cli.command} ${cli.args.join(" ")} hook session-start`;
 
-    const existing: any[] = settings.hooks.SessionStart ?? [];
-    const hasHook = existing.some((h: any) =>
-      h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
-    );
+  const existing: any[] = settings.hooks.SessionStart ?? [];
+  const hasHook = existing.some((h: any) =>
+    h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
+  );
 
-    if (!hasHook) {
-      existing.push({
-        hooks: [{ type: "command", command: hookCmd, timeout: 10 }],
-      });
-      settings.hooks.SessionStart = existing;
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-      console.log("  Installed SessionStart hook (~/.claude/settings.json)");
-    }
+  if (!hasHook) {
+    existing.push({
+      hooks: [{ type: "command", command: hookCmd, timeout: 10 }],
+    });
+    settings.hooks.SessionStart = existing;
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    console.log("  Installed SessionStart hook (~/.claude/settings.json)");
   }
 
   console.log(`\nsuggestion-box initialized in ${targetDir}`);
