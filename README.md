@@ -20,6 +20,32 @@ Agent hits friction → submits feedback → similar? auto-votes → human revie
 
 Each submission includes impact estimates (tokens saved, time saved) for prioritization. Embeddings detect duplicates automatically — if two agents report the same issue, the second becomes a vote instead of a duplicate.
 
+## Demo
+
+<!-- TODO: Add demo GIF once recorded with: vhs demo/demo.tape -->
+
+The [`demo/demo-script.sh`](demo/demo-script.sh) script walks through the full feedback loop — init, submit, list, status, publish, and dismiss — with realistic examples. Run it interactively or use it as the basis for a terminal recording.
+
+**Run interactively:**
+
+```bash
+bash demo/demo-script.sh
+```
+
+**Record with [VHS](https://github.com/charmbracelet/vhs):**
+
+```bash
+vhs demo/demo.tape
+```
+
+This produces `demo/demo.gif` — a ready-to-embed terminal recording.
+
+**Record with [asciinema](https://asciinema.org/):**
+
+```bash
+asciinema rec demo.cast -c 'bash demo/demo-script.sh'
+```
+
 ## Install
 
 No special runtime required — the published package runs on **Node.js** (v18+).
