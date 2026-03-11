@@ -9,7 +9,7 @@ export type VectorType = "vector32" | "vector64" | "vector8" | "vector1";
  * "feature_request", and "observation", but projects can define
  * custom categories in `.suggestion-box/config.json`.
  */
-export type FeedbackCategory = string;
+export type FeedbackCategory = "friction" | "feature_request" | "observation" | (string & {});
 
 export type TargetType = "mcp_server" | "tool" | "codebase" | "workflow" | "general";
 
