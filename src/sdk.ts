@@ -1,5 +1,6 @@
 export { FeedbackStore } from "./store.js";
 export { RateLimiter, RateLimitError } from "./rate-limiter.js";
+export { DEFAULT_CATEGORIES, getCategories } from "./categories.js";
 export type { RateLimiterConfig } from "./rate-limiter.js";
 export type {
   EmbedFn,

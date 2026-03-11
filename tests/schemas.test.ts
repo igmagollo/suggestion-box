@@ -1,6 +1,8 @@
 import { describe, test, expect } from "bun:test";
 import {
   submitFeedbackSchema,
+  createSubmitFeedbackSchema,
+  createListFeedbackSchema,
   upvoteFeedbackSchema,
   listFeedbackSchema,
   dismissFeedbackSchema,
@@ -103,6 +105,31 @@ describe("submitFeedbackSchema", () => {
     test("rejects invalid category", () => {
       const result = submitFeedbackSchema.safeParse({ ...validInput, category: "bug" });
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("custom categories via createSubmitFeedbackSchema", () => {
+    const customSchema = createSubmitFeedbackSchema(["bug", "praise", "friction"]);
+
+    test("accepts a custom category", () => {
+      const result = customSchema.safeParse({ ...validInput, category: "bug" });
+      expect(result.success).toBe(true);
+    });
+
+    test("accepts another custom category", () => {
+      const result = customSchema.safeParse({ ...validInput, category: "praise" });
+      expect(result.success).toBe(true);
+    });
+
+    test("rejects a category not in the custom list", () => {
+      const result = customSchema.safeParse({ ...validInput, category: "feature_request" });
+      expect(result.success).toBe(false);
+    });
+
+    test("falls back to defaults when called with empty array", () => {
+      const defaultSchema = createSubmitFeedbackSchema([]);
+      const result = defaultSchema.safeParse({ ...validInput, category: "friction" });
+      expect(result.success).toBe(true);
     });
   });
 
@@ -231,6 +258,20 @@ describe("listFeedbackSchema", () => {
   test("rejects invalid sort_by", () => {
     const result = listFeedbackSchema.safeParse({ sort_by: "name" });
     expect(result.success).toBe(false);
+  });
+
+  describe("custom categories via createListFeedbackSchema", () => {
+    const customSchema = createListFeedbackSchema(["bug", "praise"]);
+
+    test("accepts a custom category filter", () => {
+      const result = customSchema.safeParse({ category: "bug" });
+      expect(result.success).toBe(true);
+    });
+
+    test("rejects a category not in custom list", () => {
+      const result = customSchema.safeParse({ category: "friction" });
+      expect(result.success).toBe(false);
+    });
   });
 });
 
