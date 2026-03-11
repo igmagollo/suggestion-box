@@ -599,6 +599,142 @@ enabled = true
     console.log(`\nsuggestion-box removed from ${targetDir}`);
   }
 
+} else if (command === "doctor") {
+  const { validateConfig } = await import("./config.js");
+  const { execFileSync } = await import("child_process");
+
+  interface CheckResult {
+    name: string;
+    passed: boolean;
+    message: string;
+  }
+
+  const checks: CheckResult[] = [];
+
+  // 1. Data directory check
+  const configResult = validateConfig();
+  if (configResult.valid && existsSync(configResult.dataDir)) {
+    checks.push({ name: "Data directory", passed: true, message: `${configResult.dataDir} exists and is writable` });
+  } else if (!existsSync(configResult.dataDir)) {
+    checks.push({ name: "Data directory", passed: false, message: `${configResult.dataDir} does not exist. Run 'suggestion-box init' first.` });
+  } else {
+    checks.push({ name: "Data directory", passed: false, message: configResult.errors.join("; ") });
+  }
+
+  // 2. Database check
+  const dbPath = getDbPath();
+  if (existsSync(dbPath)) {
+    try {
+      const { connect } = await import("@tursodatabase/database");
+      const db = await connect(dbPath);
+      await db.exec("SELECT 1");
+      checks.push({ name: "Database", passed: true, message: `${dbPath} is accessible` });
+
+      // 3. WAL mode check (only if DB is accessible)
+      try {
+        const row = await db.prepare("PRAGMA journal_mode").get() as any;
+        const mode = row?.journal_mode ?? row?.[0] ?? "unknown";
+        if (mode === "wal") {
+          checks.push({ name: "WAL mode", passed: true, message: "journal_mode = WAL" });
+        } else {
+          checks.push({ name: "WAL mode", passed: false, message: `journal_mode = ${mode} (expected WAL). The server will set WAL on connect, but it is not currently active.` });
+        }
+      } catch (e: any) {
+        checks.push({ name: "WAL mode", passed: false, message: `Could not check journal_mode: ${e.message}` });
+      }
+
+      db.close();
+    } catch (e: any) {
+      checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
+      checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
+    }
+  } else {
+    checks.push({ name: "Database", passed: false, message: `${dbPath} not found. Run 'suggestion-box init' and start the server once to create it.` });
+    checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not found)" });
+  }
+
+  // 4. gh CLI check
+  try {
+    execFileSync("gh", ["auth", "status"], { stdio: "pipe" });
+    checks.push({ name: "gh CLI", passed: true, message: "Installed and authenticated" });
+  } catch (e: any) {
+    try {
+      execFileSync("gh", ["--version"], { stdio: "pipe" });
+      checks.push({ name: "gh CLI", passed: false, message: "Installed but not authenticated. Run 'gh auth login'." });
+    } catch {
+      checks.push({ name: "gh CLI", passed: false, message: "Not installed. Install from https://cli.github.com" });
+    }
+  }
+
+  // 5. Embedding model check
+  const modelEnv = process.env.SUGGESTION_BOX_MODEL;
+  if (modelEnv) {
+    checks.push({ name: "Embedding model", passed: true, message: `SUGGESTION_BOX_MODEL set to "${modelEnv}"` });
+  } else {
+    // Check if the default model cache might exist
+    const cacheDir = join(
+      process.env.HF_HOME ?? join(process.env.HOME ?? "~", ".cache", "huggingface"),
+      "hub"
+    );
+    if (existsSync(cacheDir)) {
+      checks.push({ name: "Embedding model", passed: true, message: `Using default model (Xenova/all-MiniLM-L6-v2). HuggingFace cache exists at ${cacheDir}` });
+    } else {
+      checks.push({ name: "Embedding model", passed: true, message: "Using default model (Xenova/all-MiniLM-L6-v2). Model will be downloaded on first use." });
+    }
+  }
+
+  // 6. Config files check
+  const targetDir = resolve(".");
+  const configs: { name: string; path: string }[] = [
+    { name: ".mcp.json (Claude Code)", path: join(targetDir, ".mcp.json") },
+    { name: ".codex/config.toml (Codex)", path: join(targetDir, ".codex", "config.toml") },
+    { name: "opencode.json (OpenCode)", path: join(targetDir, "opencode.json") },
+  ];
+  const foundConfigs = configs.filter(c => existsSync(c.path));
+  if (foundConfigs.length > 0) {
+    checks.push({ name: "Agent configs", passed: true, message: `Found: ${foundConfigs.map(c => c.name).join(", ")}` });
+  } else {
+    checks.push({ name: "Agent configs", passed: false, message: "No agent config files found. Run 'suggestion-box init' to create them." });
+  }
+
+  // 7. Hooks check
+  const settingsPath = join(targetDir, ".claude", "settings.json");
+  if (existsSync(settingsPath)) {
+    try {
+      const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      const sessionStart: any[] = settings?.hooks?.SessionStart ?? [];
+      const hasHook = sessionStart.some((h: any) =>
+        h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
+      );
+      if (hasHook) {
+        checks.push({ name: "SessionStart hook", passed: true, message: "Installed in .claude/settings.json" });
+      } else {
+        checks.push({ name: "SessionStart hook", passed: false, message: "Not found in .claude/settings.json. Run 'suggestion-box init' to install." });
+      }
+    } catch {
+      checks.push({ name: "SessionStart hook", passed: false, message: "Could not parse .claude/settings.json" });
+    }
+  } else {
+    checks.push({ name: "SessionStart hook", passed: false, message: ".claude/settings.json not found. Run 'suggestion-box init' to create it." });
+  }
+
+  // Print results
+  console.log("suggestion-box doctor\n");
+  let passed = 0;
+  for (const check of checks) {
+    if (check.passed) {
+      passed++;
+      console.log(`  \u2713 ${check.name}: ${check.message}`);
+    } else {
+      console.log(`  \u2717 ${check.name}: ${check.message}`);
+    }
+  }
+  console.log(`\n${passed}/${checks.length} checks passed`);
+
+  if (passed < checks.length) {
+    process.exit(1);
+  }
+
 } else if (command === "help" || command === "--help") {
   console.log(`suggestion-box - Centralized feedback registry for coding agents
 
@@ -616,6 +752,7 @@ Usage:
   suggestion-box publish <id> [repo]  Publish feedback as GitHub issue
   suggestion-box dismiss <id>         Dismiss a feedback entry
   suggestion-box purge                Delete dismissed entries
+  suggestion-box doctor               Verify environment health
   suggestion-box help                 Show this help
 
 Categories: friction, feature_request, observation
