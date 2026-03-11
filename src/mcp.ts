@@ -2,8 +2,6 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createFeedbackStore } from "./sdk.js";
 import { createEmbedder } from "./embedder.js";
-import { resolve } from "path";
-import { existsSync, mkdirSync } from "fs";
 import { randomUUID } from "crypto";
 import {
   submitFeedbackSchema,
@@ -13,16 +11,10 @@ import {
   publishToGithubSchema,
 } from "./schemas.js";
 import { checkGhAuth, createGithubIssue } from "./github.js";
-
-function getDataDir(): string {
-  const dir = resolve(process.env.SUGGESTION_BOX_DIR ?? ".suggestion-box");
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  return dir;
-}
+import { assertValidConfig } from "./config.js";
 
 export async function startMcpServer(): Promise<void> {
-  const dataDir = getDataDir();
-  const dbPath = resolve(dataDir, "feedback.db");
+  const { dataDir, dbPath } = assertValidConfig();
 
   const embed = await createEmbedder();
 
