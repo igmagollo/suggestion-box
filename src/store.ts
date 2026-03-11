@@ -18,6 +18,9 @@ import type {
   SortBy,
   TriageInput,
   TriageResult,
+  PreTriageInput,
+  PreTriageResult,
+  TriageGroup,
 } from "./types.js";
 
 type Database = Awaited<ReturnType<typeof connect>>;
@@ -540,6 +543,91 @@ export class FeedbackStore {
     });
 
     return rows.length;
+  }
+
+  async markPendingReview(feedbackId: string): Promise<boolean> {
+    await this.init();
+    const now = Math.floor(Date.now() / 1000);
+    return this.withDb(async (db) => {
+      const result = await db.prepare(
+        "UPDATE feedback SET status = 'pending_review', updated_at = ? WHERE id = ? AND status = 'open'"
+      ).run(now, feedbackId);
+      return result.changes > 0;
+    });
+  }
+
+  /**
+   * Group open feedback by similarity, check GitHub for existing issues,
+   * and optionally mark items as pending_review.
+   */
+  async preTriage(input: PreTriageInput = {}): Promise<PreTriageResult> {
+    await this.init();
+
+    const items = await this.listFeedback({
+      targetType: input.targetType,
+      targetName: input.targetName,
+      status: "open",
+      sortBy: "votes",
+      limit: input.limit ?? 100,
+    });
+
+    if (items.length === 0) {
+      return { groups: [], totalItems: 0, markedAsPendingReview: 0 };
+    }
+
+    // Greedy clustering using trigram similarity
+    const CLUSTER_THRESHOLD = 0.25;
+    const assigned = new Set<string>();
+    const groups: TriageGroup[] = [];
+
+    for (const item of items) {
+      if (assigned.has(item.id)) continue;
+
+      const cluster: Feedback[] = [item];
+      assigned.add(item.id);
+
+      for (const candidate of items) {
+        if (assigned.has(candidate.id)) continue;
+        const sim = trigramSimilarity(item.content, candidate.content);
+        if (sim >= CLUSTER_THRESHOLD) {
+          cluster.push(candidate);
+          assigned.add(candidate.id);
+        }
+      }
+
+      // Representative is the highest-voted item (items are already sorted by votes desc)
+      const representative = cluster.reduce((best, c) => c.votes > best.votes ? c : best, cluster[0]);
+
+      const totalVotes = cluster.reduce((sum, c) => sum + c.votes, 0);
+      const totalTokens = cluster.reduce((sum, c) => sum + (c.estimatedTokensSaved ?? 0), 0);
+      const totalMinutes = cluster.reduce((sum, c) => sum + (c.estimatedTimeSavedMinutes ?? 0), 0);
+
+      groups.push({
+        representative,
+        items: cluster,
+        totalVotes,
+        totalEstimatedTokensSaved: totalTokens,
+        totalEstimatedTimeSavedMinutes: totalMinutes,
+        existingGithubIssueUrl: null,
+        existingGithubIssueNumber: null,
+      });
+    }
+
+    // Optionally mark items as pending_review
+    const shouldMark = input.markAsPendingReview !== false;
+    let markedCount = 0;
+    if (shouldMark) {
+      for (const item of items) {
+        const marked = await this.markPendingReview(item.id);
+        if (marked) markedCount++;
+      }
+    }
+
+    return {
+      groups,
+      totalItems: items.length,
+      markedAsPendingReview: markedCount,
+    };
   }
 
   async purge(): Promise<number> {

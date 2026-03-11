@@ -10,9 +10,10 @@ import {
   dismissFeedbackSchema,
   publishToGithubSchema,
   triageSchema,
+  preTriageSchema,
 } from "./schemas.js";
 import { getCategories, getWebhooks } from "./categories.js";
-import { checkGhAuth, createGithubIssue } from "./github.js";
+import { checkGhAuth, createGithubIssue, extractKeywords, keywordSimilarity } from "./github.js";
 import { assertValidConfig } from "./config.js";
 import { RateLimiter, RateLimitError } from "./rate-limiter.js";
 
@@ -413,6 +414,118 @@ Start now: present **Item 1** and ask the user what to do.`;
           text += "\n";
           if (item.title) text += `Title: ${item.title}\n`;
           text += `${item.content}\n\n`;
+        }
+
+        return { content: [{ type: "text" as const, text }] };
+      } catch (e: any) {
+        return { content: [{ type: "text" as const, text: `Error: ${e.message}` }], isError: true };
+      }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // Tool: suggestion_box_pre_triage
+  // -------------------------------------------------------------------------
+  server.tool(
+    "suggestion_box_pre_triage",
+    `Pre-triage open feedback: groups similar entries by topic, checks GitHub for existing issues, computes combined impact per group, and moves items to a pending_review queue for human approval.
+
+Use this before a review session to:
+- Collapse noisy duplicates into coherent clusters
+- Surface which groups already have a GitHub issue
+- Prioritize by combined votes and estimated impact
+- Prepare a clean queue for the TUI review flow
+
+Returns a structured report of groups with representative items, vote totals, impact estimates, and GitHub deduplication status.`,
+    preTriageSchema.shape,
+    async ({ target_type, target_name, github_repo, mark_as_pending_review, limit }) => {
+      try {
+        const result = await store.preTriage({
+          targetType: target_type,
+          targetName: target_name,
+          githubRepo: github_repo,
+          markAsPendingReview: mark_as_pending_review,
+          limit,
+        });
+
+        if (result.totalItems === 0) {
+          return { content: [{ type: "text" as const, text: "No open feedback items found matching the filters." }] };
+        }
+
+        // For groups that have a github_repo, check for existing issues
+        const ghAvailable = github_repo ? checkGhAuth() : false;
+        if (ghAvailable && github_repo) {
+          for (const group of result.groups) {
+            const keywords = extractKeywords(group.representative);
+            if (!keywords) continue;
+            try {
+              const { execFileSync } = await import("child_process");
+              const raw = execFileSync(
+                "gh",
+                ["issue", "list", "--repo", github_repo, "--search", `${keywords} in:title`, "--state", "open", "--json", "number,title,url", "--limit", "5"],
+                { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
+              );
+              const issues: Array<{ number: number; title: string; url: string }> = JSON.parse(raw.trim() || "[]");
+              const SIMILARITY_THRESHOLD = 0.3;
+              for (const issue of issues) {
+                if (keywordSimilarity(keywords, issue.title) >= SIMILARITY_THRESHOLD) {
+                  group.existingGithubIssueUrl = issue.url;
+                  group.existingGithubIssueNumber = issue.number;
+                  break;
+                }
+              }
+            } catch {
+              // GitHub search failed — continue without dedup info
+            }
+          }
+        }
+
+        // Build report
+        const categoryLabel: Record<string, string> = {
+          friction: "Friction Report",
+          feature_request: "Feature Request",
+          observation: "Observation",
+        };
+
+        let text = `Pre-triage complete: ${result.totalItems} items grouped into ${result.groups.length} cluster(s)`;
+        if (result.markedAsPendingReview > 0) {
+          text += ` — ${result.markedAsPendingReview} marked as pending_review`;
+        }
+        text += "\n\n";
+
+        for (let i = 0; i < result.groups.length; i++) {
+          const group = result.groups[i];
+          const rep = group.representative;
+          const label = categoryLabel[rep.category] ?? rep.category;
+
+          text += `━━━ Group ${i + 1}/${result.groups.length}: [${label}] ${group.items.length} item(s), ${group.totalVotes} total vote(s) ━━━\n`;
+
+          if (group.totalEstimatedTokensSaved > 0 || group.totalEstimatedTimeSavedMinutes > 0) {
+            const parts: string[] = [];
+            if (group.totalEstimatedTokensSaved > 0) parts.push(`~${group.totalEstimatedTokensSaved} tokens`);
+            if (group.totalEstimatedTimeSavedMinutes > 0) parts.push(`~${group.totalEstimatedTimeSavedMinutes}min`);
+            text += `Impact: ${parts.join(", ")}\n`;
+          }
+
+          if (group.existingGithubIssueUrl) {
+            text += `GitHub duplicate: #${group.existingGithubIssueNumber} ${group.existingGithubIssueUrl}\n`;
+          }
+
+          text += `Target: ${rep.targetType}/${rep.targetName}\n`;
+          text += `Representative (ID: ${rep.id}, ${rep.votes} vote(s)):\n`;
+          const preview = rep.content.length > 200 ? rep.content.slice(0, 197) + "..." : rep.content;
+          text += `  ${preview}\n`;
+
+          if (group.items.length > 1) {
+            text += `Similar items (${group.items.length - 1}):\n`;
+            for (const item of group.items) {
+              if (item.id === rep.id) continue;
+              const itemPreview = item.content.length > 100 ? item.content.slice(0, 97) + "..." : item.content;
+              text += `  - [${item.votes}v] ${item.id.slice(0, 8)}: ${itemPreview}\n`;
+            }
+          }
+
+          text += "\n";
         }
 
         return { content: [{ type: "text" as const, text }] };
