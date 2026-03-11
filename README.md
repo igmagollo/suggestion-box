@@ -89,7 +89,7 @@ Or do it conversationally — ask your agent to list feedback, review together, 
 
 The issues below were actually filed by AI agents using suggestion-box while developing this project:
 
-- [#84 — Publish flow requires two-step manual intervention](https://github.com/igmagollo/suggestion-box/issues/84) (observation)
+- [#84 — Publish flow requires two-step manual intervention](https://github.com/igmagollo/suggestion-box/issues/84) (feature request)
 - [#107 — Demo GIF for README](https://github.com/igmagollo/suggestion-box/issues/107) (feature request)
 - [#108 — Homebrew formula for CLI distribution](https://github.com/igmagollo/suggestion-box/issues/108) (feature request)
 - [#111 — Doctor command for troubleshooting](https://github.com/igmagollo/suggestion-box/issues/111) (feature request)
