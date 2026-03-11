@@ -26,15 +26,21 @@ No special runtime required — the published package runs on **Node.js** (v18+)
 npx @igmagollo/suggestion-box init .
 ```
 
-This sets up everything:
-- `.suggestion-box/` data directory with local SQLite + vector DB
-- `.mcp.json` for Claude Code
-- `.codex/config.toml` for Codex
-- `opencode.json` for OpenCode
-- SessionStart hook that tells agents to use the tools proactively
-- Adds generated files to `.gitignore`
+This creates a `.suggestion-box/` data directory (local SQLite + vector DB), configures your coding agents, and updates `.gitignore`. Restart your agent to activate.
 
-Restart your coding agent to activate.
+## Cross-agent compatibility
+
+`suggestion-box init` configures **Claude Code**, **Codex**, and **OpenCode** automatically. All three share the same `.suggestion-box/` database, so feedback submitted by one agent is visible to all others.
+
+| Agent | Config files created | Notes |
+|-------|---------------------|-------|
+| **Claude Code** | `.mcp.json` + `.claude/settings.json` | SessionStart hook prompts the agent to use suggestion-box proactively |
+| **Codex** | `.codex/config.toml` | Sees the MCP tools; no hook support |
+| **OpenCode** | `opencode.json` | Sees the MCP tools; no hook support |
+
+**SessionStart hook**: The `.claude/settings.json` hook fires at the start of every Claude Code session, reminding the agent to submit feedback as it works. Codex and OpenCode don't support session hooks — agents will still have access to the tools, but won't get the proactive prompt unless instructed in their system prompt or rules.
+
+**Shared database**: All agents read and write the same `.suggestion-box/` directory. Dedup, votes, and impact estimates work across agents — if Claude Code reports an issue and Codex hits the same friction later, the second submission becomes a vote on the first.
 
 ## MCP Tools
 
