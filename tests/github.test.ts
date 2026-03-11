@@ -1,5 +1,5 @@
 import { describe, test, expect } from "bun:test";
-import { extractKeywords, keywordSimilarity } from "../src/github.js";
+import { extractKeywords, keywordSimilarity, isSuggestionBoxIssueTitle } from "../src/github.js";
 import type { Feedback } from "../src/types.js";
 
 function makeFeedback(overrides: Partial<Feedback> = {}): Feedback {
@@ -75,6 +75,41 @@ describe("extractKeywords", () => {
     const keywords = extractKeywords(feedback);
     const words = keywords.split(" ");
     expect(words.length).toBeLessThanOrEqual(8);
+  });
+});
+
+describe("isSuggestionBoxIssueTitle", () => {
+  test("detects built-in friction category title", () => {
+    expect(isSuggestionBoxIssueTitle("[Friction Report] Tool crashes on startup")).toBe(true);
+  });
+
+  test("detects built-in feature request category title", () => {
+    expect(isSuggestionBoxIssueTitle("[Feature Request] Add dark mode support")).toBe(true);
+  });
+
+  test("detects built-in observation category title", () => {
+    expect(isSuggestionBoxIssueTitle("[Observation] Memory usage increases over time")).toBe(true);
+  });
+
+  test("detects custom category titles", () => {
+    expect(isSuggestionBoxIssueTitle("[bug] Login page throws 500 error")).toBe(true);
+    expect(isSuggestionBoxIssueTitle("[performance] Slow query on dashboard")).toBe(true);
+    expect(isSuggestionBoxIssueTitle("[security_issue] Token exposed in logs")).toBe(true);
+  });
+
+  test("does not match regular issue titles", () => {
+    expect(isSuggestionBoxIssueTitle("Fix the login bug")).toBe(false);
+    expect(isSuggestionBoxIssueTitle("Add dark mode")).toBe(false);
+    expect(isSuggestionBoxIssueTitle("Memory leak in worker")).toBe(false);
+  });
+
+  test("does not match titles with brackets but no trailing space", () => {
+    // '[tag]text' without a space after the bracket is not the suggestion-box format
+    expect(isSuggestionBoxIssueTitle("[bug]Login issue")).toBe(false);
+  });
+
+  test("does not match empty bracket pairs", () => {
+    expect(isSuggestionBoxIssueTitle("[] empty tag")).toBe(false);
   });
 });
 
