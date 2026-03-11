@@ -287,6 +287,96 @@ If similar feedback already exists, your submission becomes a vote on it instead
     },
   );
 
+  // -------------------------------------------------------------------------
+  // Prompt: review (slash command /review)
+  // -------------------------------------------------------------------------
+  server.prompt(
+    "review",
+    `Walk through all open feedback items one by one and triage each one (publish, dismiss, or skip).`,
+    {},
+    async () => {
+      const items = await store.listFeedback({ status: "open", sortBy: "votes" });
+
+      if (items.length === 0) {
+        return {
+          messages: [
+            {
+              role: "user" as const,
+              content: {
+                type: "text" as const,
+                text: "No open feedback items found in suggestion-box. The queue is empty — nothing to review.",
+              },
+            },
+          ],
+        };
+      }
+
+      const itemSummaries = items.map((item, i) => {
+        const impact = [
+          item.estimatedTokensSaved ? `~${item.estimatedTokensSaved} tokens saved` : null,
+          item.estimatedTimeSavedMinutes ? `~${item.estimatedTimeSavedMinutes}min saved` : null,
+        ].filter(Boolean).join(", ");
+
+        const repoHint = item.githubRepo ? ` (repo: ${item.githubRepo})` : "";
+        const titleLine = item.title ? `Title: ${item.title}\n` : "";
+        const impactLine = impact ? `Impact: ${impact}\n` : "";
+
+        return `### Item ${i + 1} of ${items.length}
+ID: ${item.id}
+Category: ${item.category} | Votes: ${item.votes} | Status: ${item.status}
+Target: ${item.targetType}/${item.targetName}${repoHint}
+${titleLine}${impactLine}Content:
+${item.content}`;
+      }).join("\n\n---\n\n");
+
+      const promptText = `You are running the suggestion-box review flow. There are **${items.length} open feedback items** to triage.
+
+Go through them one by one, in the order presented. For each item:
+
+1. **Show** the item clearly (ID, category, votes, content, target, impact if available).
+2. **Ask** the user what to do:
+   - **publish** — publish it as a GitHub issue (use \`suggestion_box_publish_to_github\`)
+     - If the item has no \`github_repo\`, ask the user to provide one (format: \`owner/repo\`)
+   - **dismiss** — mark it as dismissed (use \`suggestion_box_dismiss_feedback\`)
+   - **skip** — leave it as-is and move on
+   - **quit** — stop the review session early
+3. **Execute** the chosen action using the appropriate MCP tool.
+4. **Confirm** the result and move to the next item.
+
+After all items are processed (or the user quits), show a **summary**:
+- How many were published, dismissed, skipped
+- Links to any GitHub issues created
+
+**Important notes:**
+- Be conversational — one item at a time, wait for the user's decision before acting.
+- When publishing, if \`suggestion_box_publish_to_github\` finds an existing GitHub issue, report the deduplication result.
+- Observations are usually not worth publishing publicly — mention this when you encounter observation-category items (but let the user decide).
+- Sort preference: highest votes first (already sorted in the list below).
+
+---
+
+## Pending Feedback Queue (${items.length} items)
+
+${itemSummaries}
+
+---
+
+Start now: present **Item 1** and ask the user what to do.`;
+
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: {
+              type: "text" as const,
+              text: promptText,
+            },
+          },
+        ],
+      };
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
