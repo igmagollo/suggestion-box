@@ -1,9 +1,19 @@
 import { z } from "zod";
+import { validateContentQuality } from "./quality.js";
 
 export const submitFeedbackSchema = z.object({
   category: z.enum(["friction", "feature_request", "observation"]).describe("Type of feedback"),
   title: z.string().max(100, "Title must be 100 characters or fewer").optional().describe("Short summary for the feedback (used as GitHub issue title when published)"),
-  content: z.string().min(20, "Feedback must be at least 20 characters — provide enough detail to be actionable").max(5000, "Feedback must be 5000 characters or fewer").describe("Detailed description of the feedback"),
+  content: z.string().min(20, "Feedback must be at least 20 characters — provide enough detail to be actionable").max(5000, "Feedback must be 5000 characters or fewer").superRefine((val, ctx) => {
+    const issues = validateContentQuality(val);
+    for (const issue of issues) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: issue.message,
+        params: { qualityCode: issue.code },
+      });
+    }
+  }).describe("Detailed description of the feedback"),
   target_type: z.enum(["mcp_server", "tool", "codebase", "workflow", "general"]).describe("What kind of thing this feedback is about"),
   target_name: z.string().describe("Name of the target (e.g., 'context7', 'gh CLI', 'src/auth')"),
   github_repo: z.string().optional().describe("GitHub repo for publishing (e.g., 'owner/repo')"),
