@@ -193,7 +193,7 @@ IMPORTANT RULES:
       "SELECT session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at FROM vote_log WHERE feedback_id = ?"
     ).all(feedbackId) as any[];
 
-    const issueUrl = createGithubIssue(repo, {
+    const result = createGithubIssue(repo, {
       id: row.id,
       title: row.title ?? null,
       content: row.content,
@@ -214,9 +214,13 @@ IMPORTANT RULES:
     const now = Math.floor(Date.now() / 1000);
     await db.prepare(
       "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
-    ).run(issueUrl, now, feedbackId);
+    ).run(result.url, now, feedbackId);
 
-    console.log(`Published: ${issueUrl}`);
+    if (result.deduplicated) {
+      console.log(`Found existing issue #${result.existingIssueNumber} — added reaction and comment: ${result.url}`);
+    } else {
+      console.log(`Published: ${result.url}`);
+    }
   });
 
 } else if (command === "purge") {
