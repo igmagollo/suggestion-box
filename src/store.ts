@@ -142,9 +142,14 @@ export class FeedbackStore {
     if (this.initialized) return;
     await this.withDb(async (db) => {
       await db.exec(SCHEMA);
-      // Migrate existing databases: add title column if missing
+      // Migrate existing databases: add columns if missing
       try {
         await db.exec("ALTER TABLE feedback ADD COLUMN title TEXT");
+      } catch {
+        // Column already exists — ignore
+      }
+      try {
+        await db.exec("ALTER TABLE feedback ADD COLUMN session_id TEXT NOT NULL DEFAULT ''");
       } catch {
         // Column already exists — ignore
       }
@@ -351,6 +356,10 @@ export class FeedbackStore {
       if (input.status) {
         conditions.push("status = ?");
         params.push(input.status);
+      }
+      if (input.sessionId) {
+        conditions.push("session_id = ?");
+        params.push(input.sessionId);
       }
 
       const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";

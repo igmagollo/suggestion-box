@@ -120,6 +120,9 @@ IMPORTANT RULES:
       } else if (args[i] === "--target" && args[i + 1]) {
         conditions.push("target_name = ?");
         params.push(args[++i]);
+      } else if (args[i] === "--session" && args[i + 1]) {
+        conditions.push("session_id = ?");
+        params.push(args[++i]);
       }
     }
 

@@ -326,6 +326,33 @@ describe("FeedbackStore", () => {
       await store.close();
     });
 
+    test("filters by sessionId", async () => {
+      const store1 = new FeedbackStore(createConfig(dbPath, { sessionId: "session-a" }));
+      await store1.submitFeedback(SAMPLE_INPUT);
+      await store1.close();
+
+      const store2 = new FeedbackStore(createConfig(dbPath, { sessionId: "session-b" }));
+      await store2.submitFeedback({
+        ...SAMPLE_INPUT,
+        content: "A completely different piece of feedback from another session",
+        targetName: "other-server",
+      });
+      await store2.close();
+
+      const storeRead = new FeedbackStore(createConfig(dbPath));
+      const all = await storeRead.listFeedback();
+      expect(all.length).toBe(2);
+
+      const sessionA = await storeRead.listFeedback({ sessionId: "session-a" });
+      expect(sessionA.length).toBe(1);
+      expect(sessionA[0].sessionId).toBe("session-a");
+
+      const sessionB = await storeRead.listFeedback({ sessionId: "session-b" });
+      expect(sessionB.length).toBe(1);
+      expect(sessionB[0].sessionId).toBe("session-b");
+      await storeRead.close();
+    });
+
     test("respects limit", async () => {
       const store = new FeedbackStore(createConfig(dbPath));
       for (let i = 0; i < 5; i++) {
