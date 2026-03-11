@@ -167,16 +167,12 @@ async function promptTitle(current: string | null): Promise<string | null> {
       (answer) => {
         rl.close();
         hideCursor();
-        // If user pressed Ctrl-C, readline emits close event before question callback
-        // We handle that via the 'close' event on rl
-        resolve(answer);
+        // On Ctrl-C, readline calls the question callback with an empty string.
+        // Treat empty string as null (cancel / clear) — callers distinguish
+        // "cancelled" from "set to empty" by receiving null either way.
+        resolve(answer || null);
       },
     );
-    // Handle Ctrl-C during input
-    rl.on("close", () => {
-      hideCursor();
-      resolve(null);
-    });
   });
 }
 
