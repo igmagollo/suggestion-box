@@ -13,7 +13,7 @@ export type FeedbackCategory = "friction" | "feature_request" | "observation" | 
 
 export type TargetType = "mcp_server" | "tool" | "codebase" | "workflow" | "general";
 
-export type FeedbackStatus = "open" | "published" | "dismissed";
+export type FeedbackStatus = "open" | "pending_review" | "published" | "dismissed";
 
 export type SortBy = "votes" | "recent" | "impact";
 
@@ -136,4 +136,37 @@ export interface TriageResult {
   items: Feedback[];
   /** The threshold used */
   threshold: number;
+}
+
+/** A cluster of similar feedback items produced by pre-triage. */
+export interface TriageGroup {
+  /** The representative (highest-voted) item in this cluster. */
+  representative: Feedback;
+  /** All items in the cluster (includes the representative). */
+  items: Feedback[];
+  /** Combined vote count across all items in the cluster. */
+  totalVotes: number;
+  /** Combined estimated tokens saved across all items. */
+  totalEstimatedTokensSaved: number;
+  /** Combined estimated time saved across all items. */
+  totalEstimatedTimeSavedMinutes: number;
+  /** URL of an existing GitHub issue that matches this cluster, if any. */
+  existingGithubIssueUrl: string | null;
+  /** Number of an existing GitHub issue, if any. */
+  existingGithubIssueNumber: number | null;
+}
+
+export interface PreTriageInput {
+  targetType?: TargetType;
+  targetName?: string;
+  githubRepo?: string;
+  /** If true, mark triaged items as pending_review. Default: true. */
+  markAsPendingReview?: boolean;
+  limit?: number;
+}
+
+export interface PreTriageResult {
+  groups: TriageGroup[];
+  totalItems: number;
+  markedAsPendingReview: number;
 }

@@ -19,6 +19,9 @@ export type {
   FeedbackStats,
   TriageInput,
   TriageResult,
+  TriageGroup,
+  PreTriageInput,
+  PreTriageResult,
 } from "./types.js";
 
 import { FeedbackStore } from "./store.js";

@@ -46,7 +46,7 @@ export function createListFeedbackSchema(categories?: string[]) {
     category: categorySchema,
     target_type: z.enum(["mcp_server", "tool", "codebase", "workflow", "general"]).optional().describe("Filter by target type"),
     target_name: z.string().optional().describe("Filter by target name"),
-    status: z.enum(["open", "published", "dismissed"]).optional().describe("Filter by status (default: open)"),
+    status: z.enum(["open", "pending_review", "published", "dismissed"]).optional().describe("Filter by status (default: open)"),
     session_id: z.string().optional().describe("Filter by session ID"),
     sort_by: z.enum(["votes", "recent", "impact"]).optional().describe("Sort order (default: votes)"),
     limit: z.coerce.number().optional().describe("Max results (default: 20)"),
@@ -76,4 +76,12 @@ export const publishToGithubSchema = z.object({
 export const triageSchema = z.object({
   threshold: z.coerce.number().int().min(1).optional().describe("Minimum vote count to include (default: 3)"),
   limit: z.coerce.number().int().min(1).optional().describe("Max results (default: 20)"),
+});
+
+export const preTriageSchema = z.object({
+  target_type: z.enum(["mcp_server", "tool", "codebase", "workflow", "general"]).optional().describe("Filter by target type"),
+  target_name: z.string().optional().describe("Filter by target name"),
+  github_repo: z.string().optional().describe("GitHub repo to check for existing issues (format: owner/repo)"),
+  mark_as_pending_review: z.boolean().optional().describe("Mark triaged items as pending_review (default: true)"),
+  limit: z.coerce.number().optional().describe("Max feedback items to consider (default: 100)"),
 });
