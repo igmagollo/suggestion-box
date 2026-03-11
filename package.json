@@ -24,16 +24,18 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && bun build src/cli.ts --target node --external @modelcontextprotocol/sdk --external zod --external @huggingface/transformers --outfile dist/cli.mjs && node -e \"let f=require('fs');let c=f.readFileSync('dist/cli.mjs','utf8');f.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
+    "build": "tsc -p tsconfig.build.json && bun build src/cli.ts --target node --external @modelcontextprotocol/sdk --external zod --external @huggingface/transformers --external better-sqlite3 --outfile dist/cli.mjs && node -e \"let f=require('fs');let c=f.readFileSync('dist/cli.mjs','utf8');f.writeFileSync('dist/cli.mjs',c.replace('#!/usr/bin/env bun','#!/usr/bin/env node'))\"",
     "test": "bun test",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.4.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^12.6.2",
     "zod": "^3.24.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.0.0",
     "bun-types": "latest",
     "typescript": "^5.0.0"

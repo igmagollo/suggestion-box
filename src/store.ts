@@ -254,6 +254,11 @@ export class FeedbackStore {
    * Find similar feedback using cosine similarity on embeddings (HuggingFace mode).
    * Similarity is computed in JavaScript after fetching candidate rows — this avoids
    * the need for the Turso-specific vector32 / vector_distance_cos SQL functions.
+   *
+   * TODO: If a target accumulates many open items, loading all embeddings into memory
+   * on every submit call may become expensive (~6KB per item). Consider moving to a
+   * DB-side nearest-neighbour filter (e.g. sqlite-vec virtual table extension) if
+   * the dataset grows.
    */
   private async findSimilarByEmbedding(content: string, targetType: string, targetName: string): Promise<Feedback | null> {
     const embedding = await this.embed(content);
@@ -275,7 +280,10 @@ export class FeedbackStore {
       for (const row of rows) {
         const storedBuf: Uint8Array | null = row.embedding;
         if (!storedBuf) continue;
-        const stored = new Float32Array(storedBuf.buffer, storedBuf.byteOffset, storedBuf.byteLength / 4);
+        // Use .slice() to copy bytes into a new, always-aligned ArrayBuffer.
+        // Float32Array requires 4-byte alignment; the byteOffset from the
+        // driver may not satisfy that, causing a RangeError on unaligned buffers.
+        const stored = new Float32Array(storedBuf.buffer.slice(storedBuf.byteOffset, storedBuf.byteOffset + storedBuf.byteLength));
         const sim = cosineSimilarity(embedding, stored);
         if (sim > bestSimilarity) {
           bestSimilarity = sim;
