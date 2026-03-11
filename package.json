@@ -1,5 +1,5 @@
 {
-  "name": "suggestion-box",
+  "name": "@igmagollo/suggestion-box",
   "version": "0.1.0",
   "description": "Centralized feedback registry MCP for coding agents and subagents.",
   "type": "module",
