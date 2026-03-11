@@ -1,0 +1,95 @@
+# suggestion-box
+
+A feedback registry MCP for coding agents. Agents proactively report friction, feature requests, and observations as they work. Feedback is deduplicated via embeddings, accumulates votes and impact evidence, and can be published as GitHub issues after human review.
+
+## The problem
+
+When agents and subagents work, they constantly hit friction — tools that fall short, missing features, confusing APIs, insufficient context. That insight evaporates when the session ends. Suggestion-box captures it systematically, creating a feedback loop for improving your agent workspace over time.
+
+## How it works
+
+```
+Agent hits friction → submits feedback → similar? auto-votes → human reviews → publishes GitHub issue
+```
+
+- **Friction reports** — "I couldn't do X because of Y"
+- **Feature requests** — "Tool X should support Y"
+- **Observations** — "This pattern is suboptimal"
+
+Each submission includes impact estimates (tokens saved, time saved) for prioritization. Embeddings detect duplicates automatically — if two agents report the same issue, the second becomes a vote instead of a duplicate.
+
+## Install
+
+```bash
+npx suggestion-box init .
+```
+
+This sets up everything:
+- `.suggestion-box/` data directory with local SQLite + vector DB
+- `.mcp.json` for Claude Code
+- `.codex/config.toml` for Codex
+- `opencode.json` for OpenCode
+- SessionStart hook that tells agents to use the tools proactively
+- Adds generated files to `.gitignore`
+
+Restart your coding agent to activate.
+
+## MCP Tools
+
+Agents get these tools automatically:
+
+| Tool | Description |
+|------|-------------|
+| `suggestion_box_submit_feedback` | Submit friction, feature request, or observation. Auto-deduplicates via embeddings. |
+| `suggestion_box_upvote_feedback` | Vote on existing feedback with evidence and impact estimates. |
+| `suggestion_box_list_feedback` | Browse and filter feedback by category, target, status. |
+| `suggestion_box_dismiss_feedback` | Soft-delete feedback that's no longer relevant. |
+| `suggestion_box_publish_to_github` | Publish feedback as a GitHub issue via `gh` CLI. |
+| `suggestion_box_status` | Overview stats: counts, top voted, total estimated impact. |
+
+## CLI
+
+```bash
+suggestion-box serve                # Start MCP server (default)
+suggestion-box init [dir]           # Set up for a project
+suggestion-box status               # Overview
+suggestion-box list [--category X] [--status X] [--target X]
+suggestion-box publish <id> [repo]  # Publish as GitHub issue
+suggestion-box dismiss <id>         # Dismiss feedback
+suggestion-box purge                # Delete dismissed entries
+suggestion-box help
+```
+
+## Review workflow
+
+```bash
+# See what agents have been reporting
+suggestion-box list
+
+# Publish the good ones to GitHub
+suggestion-box publish <id> owner/repo
+
+# Dismiss the rest
+suggestion-box dismiss <id>
+```
+
+Or do it conversationally — ask your agent to list feedback, review together, and publish the ones you approve.
+
+## Environment variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SUGGESTION_BOX_DIR` | Data directory path | `.suggestion-box` |
+| `SUGGESTION_BOX_MODEL` | Embedding model override | `Xenova/all-MiniLM-L6-v2` |
+
+## How dedup works
+
+Each feedback submission is embedded using a local model (384-dim, runs on CPU, no API key). When new feedback arrives, it's compared against existing open entries. If cosine similarity exceeds 0.85, the submission becomes a vote on the existing entry instead of creating a duplicate. Impact estimates accumulate across votes.
+
+## Acknowledgments
+
+Inspired by [memelord](https://github.com/glommer/memelord) — persistent memory with reinforcement learning for coding agents. Suggestion-box follows similar patterns (local Turso DB, embeddings, MCP tools) but focuses on feedback collection rather than memory retention.
+
+## License
+
+MIT
