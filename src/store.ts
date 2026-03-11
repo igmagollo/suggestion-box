@@ -3,8 +3,10 @@ import { randomUUID } from "crypto";
 import { execSync } from "child_process";
 import { isTrigramMode, trigramSimilarity, DEFAULT_TRIGRAM_THRESHOLD } from "./embedder.js";
 import { getSuggestionBoxVersion } from "./version.js";
+import { maybeFireWebhooks } from "./webhook.js";
 import type {
   SupervisorConfig,
+  WebhookConfig,
   Feedback,
   FeedbackMetadata,
   FeedbackStatus,
@@ -73,6 +75,7 @@ export class FeedbackStore {
   private cachedDb: Database | null = null;
   private readonly useTrigramDedup: boolean;
   private readonly trigramThreshold: number;
+  private readonly webhooks: WebhookConfig[];
 
   constructor(config: SupervisorConfig) {
     this.dbPath = config.dbPath;
@@ -83,6 +86,7 @@ export class FeedbackStore {
     this.persistent = config.persistent ?? false;
     this.useTrigramDedup = isTrigramMode(config.embed);
     this.trigramThreshold = DEFAULT_TRIGRAM_THRESHOLD;
+    this.webhooks = config.webhooks ?? [];
   }
 
   /**
@@ -190,6 +194,7 @@ export class FeedbackStore {
       : await this.findSimilarByEmbedding(input.content, input.targetType, input.targetName);
 
     if (duplicate) {
+      const prevVotes = duplicate.votes;
       await this.withDb(async (db) => {
         await db.prepare(
           "UPDATE feedback SET votes = votes + 1, estimated_tokens_saved = COALESCE(estimated_tokens_saved, 0) + COALESCE(?, 0), estimated_time_saved_minutes = COALESCE(estimated_time_saved_minutes, 0) + COALESCE(?, 0), updated_at = ? WHERE id = ?"
@@ -201,10 +206,18 @@ export class FeedbackStore {
       });
 
       const updated = await this.getFeedbackById(duplicate.id);
+      const newVotes = updated?.votes ?? duplicate.votes + 1;
+
+      if (this.webhooks.length > 0 && updated) {
+        maybeFireWebhooks(updated, prevVotes, this.webhooks).catch((e) =>
+          console.error("[suggestion-box] webhook error:", e)
+        );
+      }
+
       return {
         feedbackId: duplicate.id,
         isDuplicate: true,
-        votes: updated?.votes ?? duplicate.votes + 1,
+        votes: newVotes,
       };
     }
 
@@ -338,6 +351,10 @@ export class FeedbackStore {
     await this.init();
     const now = Math.floor(Date.now() / 1000);
 
+    // Capture prevVotes before the update so we can detect threshold crossings.
+    const before = await this.getFeedbackById(input.feedbackId);
+    const prevVotes = before?.votes ?? 0;
+
     await this.withDb(async (db) => {
       await db.prepare(
         "UPDATE feedback SET votes = votes + 1, estimated_tokens_saved = COALESCE(estimated_tokens_saved, 0) + COALESCE(?, 0), estimated_time_saved_minutes = COALESCE(estimated_time_saved_minutes, 0) + COALESCE(?, 0), updated_at = ? WHERE id = ?"
@@ -349,6 +366,13 @@ export class FeedbackStore {
     });
 
     const feedback = await this.getFeedbackById(input.feedbackId);
+
+    if (this.webhooks.length > 0 && feedback) {
+      maybeFireWebhooks(feedback, prevVotes, this.webhooks).catch((e) =>
+        console.error("[suggestion-box] webhook error:", e)
+      );
+    }
+
     return { votes: feedback?.votes ?? 0 };
   }
 

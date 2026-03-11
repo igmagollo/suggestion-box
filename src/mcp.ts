@@ -10,7 +10,7 @@ import {
   dismissFeedbackSchema,
   publishToGithubSchema,
 } from "./schemas.js";
-import { getCategories } from "./categories.js";
+import { getCategories, getWebhooks } from "./categories.js";
 import { checkGhAuth, createGithubIssue } from "./github.js";
 import { assertValidConfig } from "./config.js";
 import { RateLimiter, RateLimitError } from "./rate-limiter.js";
@@ -26,11 +26,13 @@ export async function startMcpServer(): Promise<void> {
     sessionId,
     embed,
     persistent: true,
+    webhooks,
   });
 
   await store.init();
 
   const categories = getCategories();
+  const webhooks = getWebhooks();
   const submitFeedbackSchema = createSubmitFeedbackSchema(categories);
   const listFeedbackSchema = createListFeedbackSchema(categories);
 
