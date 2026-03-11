@@ -71,13 +71,13 @@ if (command === "hook") {
     // Gracefully skip if the DB doesn't exist or is locked by the MCP server.
     let frictionDigest = "";
     const dbPath = getDbPath();
-    if (existsSync(dbPath)) {
+    if (cats.includes("friction") && existsSync(dbPath)) {
       try {
         const { connect } = await import("@tursodatabase/database");
         const db = await connect(dbPath);
         try {
           await db.exec("PRAGMA journal_mode=WAL");
-          await db.exec("PRAGMA busy_timeout = 1000");
+          await db.exec("PRAGMA busy_timeout = 5000");
           const rows = await db.prepare(
             "SELECT title, content, votes, target_type, target_name FROM feedback WHERE status = 'open' AND category = 'friction' ORDER BY votes DESC LIMIT 5"
           ).all() as any[];
