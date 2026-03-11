@@ -11,13 +11,11 @@
 
 import { createInterface } from "readline";
 import type { Feedback } from "./types.js";
-import { checkGhAuth, createGithubIssue } from "./github.js";
 
 // ---------------------------------------------------------------------------
 // ANSI helpers
 // ---------------------------------------------------------------------------
 
-const ESC = "\x1b[";
 const RESET = "\x1b[0m";
 const BOLD = "\x1b[1m";
 const DIM = "\x1b[2m";
@@ -30,10 +28,6 @@ const BLUE = "\x1b[34m";
 
 function clearScreen(): void {
   process.stdout.write("\x1b[2J\x1b[H");
-}
-
-function moveTo(row: number, col: number): void {
-  process.stdout.write(`${ESC}${row};${col}H`);
 }
 
 function hideCursor(): void {
@@ -101,7 +95,6 @@ function renderCard(
   index: number,
   total: number,
   statusLine: string,
-  pendingPublish: boolean,
 ): void {
   const { cols, rows } = termSize();
   clearScreen();
@@ -234,7 +227,7 @@ export async function runReview(deps: ReviewDeps): Promise<void> {
   });
 
   const renderCurrent = () => {
-    renderCard(feedbacks[index], index, feedbacks.length, statusLine, false);
+    renderCard(feedbacks[index], index, feedbacks.length, statusLine);
     statusLine = ""; // reset after render
   };
 
@@ -311,8 +304,6 @@ export async function runReview(deps: ReviewDeps): Promise<void> {
           feedbacks.splice(index, 1);
           statusLine = `${GREEN}Published: ${url}${RESET}`;
           if (feedbacks.length === 0) {
-            // Show status briefly then exit
-            renderCard(feedbacks[0] ?? current, 0, 0, statusLine, false);
             cleanup();
             console.log(`Published: ${url}`);
             console.log("All feedback reviewed.");
@@ -333,22 +324,11 @@ export async function runReview(deps: ReviewDeps): Promise<void> {
         process.stdin.setRawMode(false);
         process.stdin.pause();
 
-        showCursor();
         process.stdout.write("\n");
         process.stdout.write(`Current title: ${current.title ?? "(none)"}\n`);
 
-        const newTitle = await new Promise<string | null>((res) => {
-          const rl = createInterface({ input: process.stdin, output: process.stdout });
-          let done = false;
-          rl.question("New title (empty to clear, Ctrl-C to cancel): ", (ans) => {
-            done = true;
-            rl.close();
-            res(ans.trim() === "" ? null : ans.trim());
-          });
-          rl.on("close", () => {
-            if (!done) res(null);
-          });
-        });
+        const rawAnswer = await promptTitle(current.title);
+        const newTitle = rawAnswer === null ? null : (rawAnswer.trim() === "" ? null : rawAnswer.trim());
 
         // Restore raw mode
         process.stdin.setRawMode(true);
