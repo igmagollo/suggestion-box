@@ -48,6 +48,16 @@ if (command === "hook") {
   const event = process.argv[3];
   if (event === "session-start") {
     const cats = getCategories();
+    const categoryDescriptions: Record<string, string> = {
+      friction: "When a tool, MCP, or workflow slows you down, is confusing, or gives insufficient context, submit it immediately",
+      feature_request: "When you wish a tool could do something it can't, or you see a clear improvement",
+      observation: "When you notice suboptimal patterns, confusing code, or workflow inefficiencies",
+    };
+    const categoryExamples = cats.map((cat, i) => {
+      const label = cat.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const desc = categoryDescriptions[cat] ?? `When you encounter something worth reporting as "${cat}"`;
+      return `${i + 1}. **${label}** — ${desc}:\n   suggestion_box_submit_feedback(category: "${cat}", content: "describe what happened", target_type: ..., target_name: ...)`;
+    }).join("\n\n");
     console.log(`<suggestion-box>
 You have access to the suggestion-box MCP — a feedback registry for improving your workspace.
 
@@ -55,14 +65,7 @@ Configured categories: ${cats.join(", ")}
 
 BE PROACTIVE. Throughout your work, actively look for opportunities to submit feedback:
 
-1. **Friction** — When a tool, MCP, or workflow slows you down, is confusing, or gives insufficient context, submit it immediately:
-   suggestion_box_submit_feedback(category: "friction", content: "what happened", target_type: ..., target_name: ...)
-
-2. **Feature requests** — When you wish a tool could do something it can't, or you see a clear improvement:
-   suggestion_box_submit_feedback(category: "feature_request", content: "what you need", target_type: ..., target_name: ...)
-
-3. **Observations** — When you notice suboptimal patterns, confusing code, or workflow inefficiencies:
-   suggestion_box_submit_feedback(category: "observation", content: "what you noticed", target_type: ..., target_name: ...)
+${categoryExamples}
 
 IMPORTANT RULES:
 - Include estimated_tokens_saved and/or estimated_time_saved_minutes when you can — this helps prioritize.
