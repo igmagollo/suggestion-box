@@ -14,6 +14,8 @@ import type {
   ListFeedbackInput,
   FeedbackStats,
   SortBy,
+  TriageInput,
+  TriageResult,
 } from "./types.js";
 
 type Database = Awaited<ReturnType<typeof connect>>;
@@ -522,6 +524,25 @@ export class FeedbackStore {
       const result = await db.prepare("DELETE FROM feedback WHERE status = 'dismissed'").run();
       return result.changes;
     });
+  }
+
+  /**
+   * Return open feedback items at or above the vote threshold, sorted by votes descending.
+   * Items surfaced here are high-signal candidates for publication or review.
+   */
+  async autoTriage(input: TriageInput = {}): Promise<TriageResult> {
+    await this.init();
+    const threshold = input.threshold ?? 3;
+    const limit = input.limit ?? 20;
+
+    const items = await this.withDb(async (db) => {
+      const rows = await db.prepare(
+        `SELECT * FROM feedback WHERE status = 'open' AND votes >= ? ORDER BY votes DESC LIMIT ?`
+      ).all(threshold, limit) as any[];
+      return rows.map((r: any) => this.rowToFeedback(r));
+    });
+
+    return { items, threshold };
   }
 
   async close(): Promise<void> {

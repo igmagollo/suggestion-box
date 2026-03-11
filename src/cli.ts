@@ -35,6 +35,7 @@ const ALLOWED_TOOLS = [
   "mcp__suggestion-box__suggestion_box_status",
   "mcp__suggestion-box__suggestion_box_dismiss_feedback",
   "mcp__suggestion-box__suggestion_box_publish_to_github",
+  "mcp__suggestion-box__suggestion_box_triage",
 ];
 
 function getCliCommand(): { command: string; args: string[] } {
@@ -340,6 +341,43 @@ IMPORTANT RULES:
   } finally {
     store.close();
   }
+
+} else if (command === "triage") {
+  const triageArgs = process.argv.slice(3);
+  let threshold = 3;
+  for (let i = 0; i < triageArgs.length; i++) {
+    if (triageArgs[i] === "--threshold" && triageArgs[i + 1]) {
+      const parsed = parseInt(triageArgs[++i], 10);
+      if (!Number.isNaN(parsed) && parsed >= 1) threshold = parsed;
+    }
+  }
+
+  await withDb(async (db) => {
+    const rows = await db.prepare(
+      `SELECT * FROM feedback WHERE status = 'open' AND votes >= ? ORDER BY votes DESC`
+    ).all(threshold) as any[];
+
+    if (rows.length === 0) {
+      console.log(`No open feedback with ${threshold} or more votes found.`);
+      process.exit(0);
+    }
+
+    console.log(`${rows.length} high-signal item(s) with ≥${threshold} votes:\n`);
+    for (const r of rows) {
+      const impact = [
+        r.estimated_tokens_saved ? `~${r.estimated_tokens_saved} tokens` : null,
+        r.estimated_time_saved_minutes ? `~${r.estimated_time_saved_minutes}min` : null,
+      ].filter(Boolean).join(", ");
+
+      console.log(`--- [${r.category}] ${r.votes} votes${impact ? ` | impact: ${impact}` : ""} | ${timeAgo(r.created_at)} ---`);
+      console.log(`ID: ${r.id}`);
+      console.log(`Target: ${r.target_type}/${r.target_name}${r.github_repo ? ` (repo: ${r.github_repo})` : ""}`);
+      if (r.title) console.log(`Title: ${r.title}`);
+      console.log(r.content.slice(0, 500));
+      if (r.content.length > 500) console.log(`  ...(${r.content.length} chars total)`);
+      console.log();
+    }
+  });
 
 } else if (command === "purge") {
   await withDb(async (db) => {
@@ -932,6 +970,8 @@ Usage:
                                       --title, --repo (optional)
   suggestion-box publish <id> [repo]  Publish feedback as GitHub issue
   suggestion-box dismiss <id>         Dismiss a feedback entry
+  suggestion-box triage [--threshold N]
+                                      Surface high-signal items (≥N votes, default: 3)
   suggestion-box purge                Delete dismissed entries
   suggestion-box doctor               Verify environment health
   suggestion-box help                 Show this help

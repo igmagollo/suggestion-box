@@ -72,3 +72,8 @@ export const publishToGithubSchema = z.object({
   feedback_id: z.string().describe("ID of the feedback to publish"),
   github_repo: z.string().optional().describe("GitHub repo (overrides stored value, format: owner/repo)"),
 });
+
+export const triageSchema = z.object({
+  threshold: z.coerce.number().int().min(1).optional().describe("Minimum vote count to include (default: 3)"),
+  limit: z.coerce.number().int().min(1).optional().describe("Max results (default: 20)"),
+});
