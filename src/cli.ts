@@ -600,7 +600,7 @@ enabled = true
   }
 
 } else if (command === "doctor") {
-  const { validateConfig } = await import("./config.js");
+  const { accessSync, constants: fsConstants } = await import("fs");
   const { execFileSync } = await import("child_process");
 
   interface CheckResult {
@@ -611,22 +611,26 @@ enabled = true
 
   const checks: CheckResult[] = [];
 
-  // 1. Data directory check
-  const configResult = validateConfig();
-  if (configResult.valid && existsSync(configResult.dataDir)) {
-    checks.push({ name: "Data directory", passed: true, message: `${configResult.dataDir} exists and is writable` });
-  } else if (!existsSync(configResult.dataDir)) {
-    checks.push({ name: "Data directory", passed: false, message: `${configResult.dataDir} does not exist. Run 'suggestion-box init' first.` });
+  // 1. Data directory check (read-only — no side effects)
+  const dataDir = resolve(process.env.SUGGESTION_BOX_DIR ?? ".suggestion-box");
+  if (existsSync(dataDir)) {
+    try {
+      accessSync(dataDir, fsConstants.R_OK | fsConstants.W_OK);
+      checks.push({ name: "Data directory", passed: true, message: `${dataDir} exists and is writable` });
+    } catch {
+      checks.push({ name: "Data directory", passed: false, message: `${dataDir} exists but is not writable. Check permissions.` });
+    }
   } else {
-    checks.push({ name: "Data directory", passed: false, message: configResult.errors.join("; ") });
+    checks.push({ name: "Data directory", passed: false, message: `${dataDir} does not exist. Run 'suggestion-box init' first.` });
   }
 
   // 2. Database check
   const dbPath = getDbPath();
   if (existsSync(dbPath)) {
+    let db: any = null;
     try {
       const { connect } = await import("@tursodatabase/database");
-      const db = await connect(dbPath);
+      db = await connect(dbPath);
       await db.exec("SELECT 1");
       checks.push({ name: "Database", passed: true, message: `${dbPath} is accessible` });
 
@@ -642,11 +646,11 @@ enabled = true
       } catch (e: any) {
         checks.push({ name: "WAL mode", passed: false, message: `Could not check journal_mode: ${e.message}` });
       }
-
-      db.close();
     } catch (e: any) {
       checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
       checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
+    } finally {
+      db?.close();
     }
   } else {
     checks.push({ name: "Database", passed: false, message: `${dbPath} not found. Run 'suggestion-box init' and start the server once to create it.` });
