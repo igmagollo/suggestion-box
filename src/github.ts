@@ -16,7 +16,7 @@ export function checkGhAuth(): boolean {
   }
 }
 
-function extractKeywords(feedback: Feedback): string {
+export function extractKeywords(feedback: Feedback): string {
   const source = feedback.title ?? feedback.content.split(/[.\n]/)[0].trim();
   // Strip markdown-ish noise, keep meaningful words
   return source
@@ -33,7 +33,7 @@ interface ExistingIssue {
   url: string;
 }
 
-function keywordSimilarity(keywords: string, title: string): number {
+export function keywordSimilarity(keywords: string, title: string): number {
   const kwSet = new Set(keywords.toLowerCase().split(/\s+/).filter(w => w.length > 2));
   const titleSet = new Set(title.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(w => w.length > 2));
   if (kwSet.size === 0 || titleSet.size === 0) return 0;
