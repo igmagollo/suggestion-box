@@ -174,22 +174,7 @@ export class FeedbackStore {
 
   async init(): Promise<void> {
     if (this.initialized) return;
-    await this.withDb(async (db) => {
-      await db.exec(SCHEMA);
-      // Migrate existing databases: add missing columns
-      for (const migration of [
-        "ALTER TABLE feedback ADD COLUMN title TEXT",
-        "ALTER TABLE feedback ADD COLUMN git_sha TEXT",
-        "ALTER TABLE feedback ADD COLUMN session_id TEXT NOT NULL DEFAULT ''",
-        "ALTER TABLE feedback ADD COLUMN metadata TEXT",
-      ]) {
-        try {
-          await db.exec(migration);
-        } catch {
-          // Column already exists — ignore
-        }
-      }
-    });
+    await initDb(this.dbPath);
     this.initialized = true;
   }
 
