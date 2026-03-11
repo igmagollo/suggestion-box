@@ -150,6 +150,17 @@ describe("submitFeedbackSchema", () => {
         expect(result.data.estimated_time_saved_minutes).toBe(5);
       }
     });
+
+    test("accepts optional git_sha", () => {
+      const result = submitFeedbackSchema.safeParse({
+        ...validInput,
+        git_sha: "abc123def456",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.git_sha).toBe("abc123def456");
+      }
+    });
   });
 });
 

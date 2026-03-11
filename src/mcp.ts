@@ -54,7 +54,7 @@ Use category "observation" when:
 
 If similar feedback already exists, your submission becomes a vote on it instead of creating a duplicate. Include impact estimates to help prioritize.`,
     submitFeedbackSchema.shape,
-    async ({ category, title, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes }) => {
+    async ({ category, title, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes, git_sha }) => {
       try {
         store.embedPending().catch((e) => console.error("[suggestion-box] embedPending error:", e));
 
@@ -67,6 +67,7 @@ If similar feedback already exists, your submission becomes a vote on it instead
           githubRepo: github_repo,
           estimatedTokensSaved: estimated_tokens_saved,
           estimatedTimeSavedMinutes: estimated_time_saved_minutes,
+          gitSha: git_sha,
         });
 
         if (result.isDuplicate) {
@@ -151,6 +152,7 @@ If similar feedback already exists, your submission becomes a vote on it instead
           text += `ID: ${item.id}\n`;
           text += `Target: ${item.targetType}/${item.targetName}`;
           if (item.githubRepo) text += ` (repo: ${item.githubRepo})`;
+          if (item.gitSha) text += ` (sha: ${item.gitSha.slice(0, 8)})`;
           text += `\n${item.content}\n\n`;
         }
 

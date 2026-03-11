@@ -212,6 +212,7 @@ IMPORTANT RULES:
       updatedAt: row.updated_at,
       publishedIssueUrl: row.published_issue_url,
       sessionId: row.session_id,
+      gitSha: row.git_sha ?? null,
     }, voteRows);
 
     const now = Math.floor(Date.now() / 1000);

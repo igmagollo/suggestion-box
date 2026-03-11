@@ -19,6 +19,7 @@ export const submitFeedbackSchema = z.object({
   github_repo: z.string().optional().describe("GitHub repo for publishing (e.g., 'owner/repo')"),
   estimated_tokens_saved: z.coerce.number().optional().describe("Estimated tokens this improvement would save per occurrence"),
   estimated_time_saved_minutes: z.coerce.number().optional().describe("Estimated minutes this improvement would save per occurrence"),
+  git_sha: z.string().optional().describe("Git HEAD SHA at time of feedback (auto-detected if omitted)"),
 });
 
 export const upvoteFeedbackSchema = z.object({
