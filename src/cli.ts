@@ -227,8 +227,14 @@ IMPORTANT RULES:
 
 } else if (command === "init") {
   const initArgs = process.argv.slice(3);
+  const knownFlags = ["--dry-run"];
+  const unknownFlags = initArgs.filter(a => a.startsWith("--") && !knownFlags.includes(a));
+  if (unknownFlags.length > 0) {
+    console.error(`Unknown flag(s): ${unknownFlags.join(", ")}. Run 'suggestion-box help' for usage.`);
+    process.exit(1);
+  }
   const dryRun = initArgs.includes("--dry-run");
-  const targetDir = resolve(initArgs.find(a => a !== "--dry-run") ?? ".");
+  const targetDir = resolve(initArgs.find(a => !a.startsWith("--")) ?? ".");
   const cli = getCliCommand();
   const prefix = dryRun ? "[dry-run] " : "";
 
@@ -377,6 +383,12 @@ enabled = true
 
 } else if (command === "uninit") {
   const uninitArgs = process.argv.slice(3);
+  const uninitKnownFlags = ["--keep-data"];
+  const uninitUnknownFlags = uninitArgs.filter(a => a.startsWith("--") && !uninitKnownFlags.includes(a));
+  if (uninitUnknownFlags.length > 0) {
+    console.error(`Unknown flag(s): ${uninitUnknownFlags.join(", ")}. Run 'suggestion-box help' for usage.`);
+    process.exit(1);
+  }
   const keepData = uninitArgs.includes("--keep-data");
   const targetDir = resolve(uninitArgs.find(a => !a.startsWith("--")) ?? ".");
 
@@ -398,14 +410,16 @@ enabled = true
         }
         removed++;
       }
-    } catch {}
+    } catch {
+      console.warn("  Warning: could not parse .mcp.json, skipping");
+    }
   }
 
   // Remove suggestion-box from .codex/config.toml
   const codexTomlPath = join(targetDir, ".codex", "config.toml");
   if (existsSync(codexTomlPath)) {
     let codexContent = readFileSync(codexTomlPath, "utf-8");
-    const sectionRegex = /\n?\[mcp_servers\.suggestion-box\]\n(?:.*\n)*?(?=\[|$)/;
+    const sectionRegex = /\n?\[mcp_servers\.suggestion-box\]\n(?:(?!\[)[^\n]*\n)*/;
     if (codexContent.includes("[mcp_servers.suggestion-box]")) {
       codexContent = codexContent.replace(sectionRegex, "");
       if (codexContent.trim() === "") {
@@ -440,7 +454,9 @@ enabled = true
         }
         removed++;
       }
-    } catch {}
+    } catch {
+      console.warn("  Warning: could not parse opencode.json, skipping");
+    }
   }
 
   // Remove SessionStart hook from ~/.claude/settings.json
@@ -475,6 +491,27 @@ enabled = true
     } else {
       rmSync(dataDir, { recursive: true });
       console.log("  Deleted .suggestion-box/ data directory");
+      removed++;
+    }
+  }
+
+  // Clean up .gitignore entries added by init
+  const gitignorePath = join(targetDir, ".gitignore");
+  if (existsSync(gitignorePath)) {
+    const ignoreEntries = [".suggestion-box/", ".mcp.json", ".codex/", "opencode.json"];
+    let content = readFileSync(gitignorePath, "utf-8");
+    const original = content;
+    for (const entry of ignoreEntries) {
+      content = content.replace(new RegExp(`^${entry.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n?`, "m"), "");
+    }
+    if (content !== original) {
+      if (content.trim() === "") {
+        rmSync(gitignorePath);
+        console.log("  Removed .gitignore (was empty after cleanup)");
+      } else {
+        writeFileSync(gitignorePath, content);
+        console.log("  Cleaned up .gitignore entries");
+      }
       removed++;
     }
   }
