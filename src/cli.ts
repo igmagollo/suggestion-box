@@ -29,7 +29,7 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
 function getCliCommand(): { command: string; args: string[] } {
   const execPath = process.argv[1] ?? "";
   if (execPath.includes("node_modules")) {
-    return { command: "suggestion-box", args: [] };
+    return { command: "npx", args: ["-y", "@igmagollo/suggestion-box"] };
   }
   return { command: "bun", args: [resolve(execPath)] };
 }

@@ -21,7 +21,7 @@ Each submission includes impact estimates (tokens saved, time saved) for priorit
 ## Install
 
 ```bash
-npx suggestion-box init .
+npx @igmagollo/suggestion-box init .
 ```
 
 This sets up everything:
