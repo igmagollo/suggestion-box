@@ -1,4 +1,4 @@
-import { openDb } from "./db-adapter.js";
+import { connect } from "@tursodatabase/database";
 import { randomUUID } from "crypto";
 import { execSync } from "child_process";
 import { isTrigramMode, trigramSimilarity, DEFAULT_TRIGRAM_THRESHOLD } from "./embedder.js";
@@ -22,7 +22,13 @@ import type {
   PreTriageResult,
   TriageGroup,
 } from "./types.js";
-import type { DbConnection } from "./db-adapter.js";
+
+type Database = Awaited<ReturnType<typeof connect>>;
+
+/** Turso driver truncates Float32Array to 1 byte/element. Wrap as Buffer to preserve float32 binary data. */
+function vecBuf(vec: Float32Array): Buffer {
+  return Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength);
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS feedback (
@@ -68,9 +74,11 @@ CREATE TABLE IF NOT EXISTS meta (
  * Does not require an embedder and imposes no side effects beyond writing the DB file.
  */
 export async function initDb(dbPath: string): Promise<void> {
-  const db = await openDb(dbPath);
+  const db = await connect(dbPath);
   try {
-    db.exec(SCHEMA);
+    await db.exec("PRAGMA journal_mode=WAL");
+    await db.exec("PRAGMA busy_timeout = 5000");
+    await db.exec(SCHEMA);
     // Run migrations so an existing DB is kept up to date too
     for (const migration of [
       "ALTER TABLE feedback ADD COLUMN title TEXT",
@@ -79,7 +87,7 @@ export async function initDb(dbPath: string): Promise<void> {
       "ALTER TABLE feedback ADD COLUMN metadata TEXT",
     ]) {
       try {
-        db.exec(migration);
+        await db.exec(migration);
       } catch {
         // Column already exists — ignore
       }
@@ -89,30 +97,16 @@ export async function initDb(dbPath: string): Promise<void> {
   }
 }
 
-/** Compute cosine similarity between two Float32Array vectors. */
-function cosineSimilarity(a: Float32Array, b: Float32Array): number {
-  if (a.length !== b.length || a.length === 0) return 0;
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
-  for (let i = 0; i < a.length; i++) {
-    dot += a[i] * b[i];
-    normA += a[i] * a[i];
-    normB += b[i] * b[i];
-  }
-  const denom = Math.sqrt(normA) * Math.sqrt(normB);
-  return denom === 0 ? 0 : dot / denom;
-}
-
 export class FeedbackStore {
   private initialized = false;
 
   private readonly dbPath: string;
   private readonly sessionId: string;
   private readonly embed: SupervisorConfig["embed"];
+  private readonly vectorType: string;
   private readonly dedupThreshold: number;
   private readonly persistent: boolean;
-  private cachedDb: DbConnection | null = null;
+  private cachedDb: Database | null = null;
   private readonly useTrigramDedup: boolean;
   private readonly trigramThreshold: number;
   private readonly webhooks: WebhookConfig[];
@@ -121,6 +115,7 @@ export class FeedbackStore {
     this.dbPath = config.dbPath;
     this.sessionId = config.sessionId;
     this.embed = config.embed;
+    this.vectorType = config.vectorType ?? "vector32";
     this.dedupThreshold = config.dedupThreshold ?? 0.85;
     this.persistent = config.persistent ?? false;
     this.useTrigramDedup = isTrigramMode(config.embed);
@@ -129,16 +124,38 @@ export class FeedbackStore {
   }
 
   /**
-   * Open a new DB connection. WAL mode and busy_timeout are set by openDb().
+   * Open a new DB connection with retry logic for lock contention.
    */
-  private async openConnection(): Promise<DbConnection> {
-    return openDb(this.dbPath);
+  private async openConnection(): Promise<Database> {
+    const maxRetries = 10;
+    const baseDelay = 50;
+
+    let db: Database;
+    for (let attempt = 0; ; attempt++) {
+      try {
+        db = await connect(this.dbPath);
+        break;
+      } catch (e: any) {
+        if (
+          attempt >= maxRetries ||
+          (!e.message?.includes("locked") && !e.message?.includes("Locking"))
+        ) {
+          throw e;
+        }
+        const delay = baseDelay * (1 + Math.random()) * Math.min(attempt + 1, 5);
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+
+    await db.exec("PRAGMA journal_mode=WAL");
+    await db.exec("PRAGMA busy_timeout = 5000");
+    return db;
   }
 
   /**
    * Get the persistent DB connection, creating it if needed.
    */
-  private async getDb(): Promise<DbConnection> {
+  private async getDb(): Promise<Database> {
     if (!this.cachedDb) {
       this.cachedDb = await this.openConnection();
     }
@@ -150,7 +167,7 @@ export class FeedbackStore {
    * In persistent mode, reuses a single long-lived connection.
    * In non-persistent mode (CLI), opens and closes per operation.
    */
-  private async withDb<T>(fn: (db: DbConnection) => Promise<T>): Promise<T> {
+  private async withDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
     if (this.persistent) {
       const db = await this.getDb();
       return fn(db);
@@ -182,6 +199,10 @@ export class FeedbackStore {
     }
   }
 
+  private get vfn(): string {
+    return this.vectorType;
+  }
+
   async submitFeedback(input: SubmitFeedbackInput): Promise<SubmitFeedbackResult> {
     await this.init();
     const now = Math.floor(Date.now() / 1000);
@@ -194,11 +215,11 @@ export class FeedbackStore {
     if (duplicate) {
       const prevVotes = duplicate.votes;
       await this.withDb(async (db) => {
-        db.prepare(
+        await db.prepare(
           "UPDATE feedback SET votes = votes + 1, estimated_tokens_saved = COALESCE(estimated_tokens_saved, 0) + COALESCE(?, 0), estimated_time_saved_minutes = COALESCE(estimated_time_saved_minutes, 0) + COALESCE(?, 0), updated_at = ? WHERE id = ?"
         ).run(input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null, now, duplicate.id);
 
-        db.prepare(
+        await db.prepare(
           "INSERT INTO vote_log (id, feedback_id, session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
         ).run(randomUUID(), duplicate.id, this.sessionId, null, input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null, now);
       });
@@ -221,7 +242,6 @@ export class FeedbackStore {
 
     const id = randomUUID();
     const embedding = this.useTrigramDedup ? null : await this.embed(input.content);
-    const embeddingBlob = embedding ? Buffer.from(embedding.buffer, embedding.byteOffset, embedding.byteLength) : null;
 
     const metadata: FeedbackMetadata = {
       suggestionBoxVersion: getSuggestionBoxVersion(),
@@ -232,17 +252,17 @@ export class FeedbackStore {
     const metadataJson = JSON.stringify(metadata);
 
     await this.withDb(async (db) => {
-      db.prepare(
+      await db.prepare(
         `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id, git_sha, metadata)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?, ?, ?)`
       ).run(
-        id, input.title ?? null, input.content, embeddingBlob, input.category, input.targetType,
+        id, input.title ?? null, input.content, embedding ? vecBuf(embedding) : null, input.category, input.targetType,
         input.targetName, input.githubRepo ?? null,
         input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null,
         now, now, this.sessionId, gitSha, metadataJson
       );
 
-      db.prepare(
+      await db.prepare(
         "INSERT INTO vote_log (id, feedback_id, session_id, estimated_tokens_saved, estimated_time_saved_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?)"
       ).run(randomUUID(), id, this.sessionId, input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null, now);
     });
@@ -250,56 +270,36 @@ export class FeedbackStore {
     return { feedbackId: id, isDuplicate: false, votes: 1 };
   }
 
-  /**
-   * Find similar feedback using cosine similarity on embeddings (HuggingFace mode).
-   * Similarity is computed in JavaScript after fetching candidate rows — this avoids
-   * the need for the Turso-specific vector32 / vector_distance_cos SQL functions.
-   *
-   * TODO: If a target accumulates many open items, loading all embeddings into memory
-   * on every submit call may become expensive (~6KB per item). Consider moving to a
-   * DB-side nearest-neighbour filter (e.g. sqlite-vec virtual table extension) if
-   * the dataset grows.
-   */
+  /** Find similar feedback using cosine distance on embeddings (HuggingFace mode). */
   private async findSimilarByEmbedding(content: string, targetType: string, targetName: string): Promise<Feedback | null> {
     const embedding = await this.embed(content);
     return this.withDb(async (db) => {
-      const rows = db.prepare(`
+      const vfn = this.vfn;
+      const rows = await db.prepare(`
         SELECT id, title, content, category, target_type, target_name, github_repo,
                status, votes, estimated_tokens_saved, estimated_time_saved_minutes,
-               created_at, updated_at, published_issue_url, session_id, embedding
+               created_at, updated_at, published_issue_url, session_id,
+               vector_distance_cos(${vfn}(embedding), ${vfn}(?)) AS distance
         FROM feedback
         WHERE embedding IS NOT NULL AND status = 'open'
           AND target_type = ? AND target_name = ?
-      `).all(targetType, targetName) as any[];
+        ORDER BY distance ASC
+        LIMIT 1
+      `).all(vecBuf(embedding), targetType, targetName) as any[];
 
       if (rows.length === 0) return null;
+      const row = rows[0];
+      const similarity = 1.0 - row.distance;
+      if (similarity < this.dedupThreshold) return null;
 
-      let bestRow: any = null;
-      let bestSimilarity = 0;
-
-      for (const row of rows) {
-        const storedBuf: Uint8Array | null = row.embedding;
-        if (!storedBuf) continue;
-        // Use .slice() to copy bytes into a new, always-aligned ArrayBuffer.
-        // Float32Array requires 4-byte alignment; the byteOffset from the
-        // driver may not satisfy that, causing a RangeError on unaligned buffers.
-        const stored = new Float32Array(storedBuf.buffer.slice(storedBuf.byteOffset, storedBuf.byteOffset + storedBuf.byteLength));
-        const sim = cosineSimilarity(embedding, stored);
-        if (sim > bestSimilarity) {
-          bestSimilarity = sim;
-          bestRow = row;
-        }
-      }
-
-      if (!bestRow || bestSimilarity < this.dedupThreshold) return null;
-      return this.rowToFeedback(bestRow);
+      return this.rowToFeedback(row);
     });
   }
 
   /** Find similar feedback using trigram Jaccard similarity (lightweight fallback). */
   private async findSimilarByTrigram(content: string, targetType: string, targetName: string): Promise<Feedback | null> {
     return this.withDb(async (db) => {
-      const rows = db.prepare(`
+      const rows = await db.prepare(`
         SELECT id, title, content, category, target_type, target_name, github_repo,
                status, votes, estimated_tokens_saved, estimated_time_saved_minutes,
                created_at, updated_at, published_issue_url, session_id
@@ -360,7 +360,7 @@ export class FeedbackStore {
 
   async getFeedbackById(id: string): Promise<Feedback | null> {
     return this.withDb(async (db) => {
-      const row = db.prepare("SELECT * FROM feedback WHERE id = ?").get(id) as any;
+      const row = await db.prepare("SELECT * FROM feedback WHERE id = ?").get(id) as any;
       if (!row) return null;
       return this.rowToFeedback(row);
     });
@@ -375,11 +375,11 @@ export class FeedbackStore {
     const prevVotes = before?.votes ?? 0;
 
     await this.withDb(async (db) => {
-      db.prepare(
+      await db.prepare(
         "UPDATE feedback SET votes = votes + 1, estimated_tokens_saved = COALESCE(estimated_tokens_saved, 0) + COALESCE(?, 0), estimated_time_saved_minutes = COALESCE(estimated_time_saved_minutes, 0) + COALESCE(?, 0), updated_at = ? WHERE id = ?"
       ).run(input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null, now, input.feedbackId);
 
-      db.prepare(
+      await db.prepare(
         "INSERT INTO vote_log (id, feedback_id, session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       ).run(randomUUID(), input.feedbackId, this.sessionId, input.evidence ?? null, input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null, now);
     });
@@ -399,7 +399,7 @@ export class FeedbackStore {
     await this.init();
     const now = Math.floor(Date.now() / 1000);
     return this.withDb(async (db) => {
-      const result = db.prepare(
+      const result = await db.prepare(
         "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status IN ('open', 'pending_review')"
       ).run(now, feedbackId);
       return result.changes > 0;
@@ -410,7 +410,7 @@ export class FeedbackStore {
     await this.init();
     const now = Math.floor(Date.now() / 1000);
     return this.withDb(async (db) => {
-      const result = db.prepare(
+      const result = await db.prepare(
         "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
       ).run(issueUrl, now, feedbackId);
       return result.changes > 0;
@@ -456,7 +456,7 @@ export class FeedbackStore {
 
       params.push(limit);
 
-      const rows = db.prepare(
+      const rows = await db.prepare(
         `SELECT * FROM feedback ${where} ORDER BY ${orderBy} LIMIT ?`
       ).all(...params) as any[];
 
@@ -467,26 +467,26 @@ export class FeedbackStore {
   async getStats(): Promise<FeedbackStats> {
     await this.init();
     return this.withDb(async (db) => {
-      const total = (db.prepare("SELECT COUNT(*) as c FROM feedback").get() as any).c;
+      const total = (await db.prepare("SELECT COUNT(*) as c FROM feedback").get() as any).c;
 
-      const catRows = db.prepare(
+      const catRows = await db.prepare(
         "SELECT category, COUNT(*) as c FROM feedback GROUP BY category"
       ).all() as any[];
       const byCategory: Record<string, number> = {};
       for (const r of catRows) byCategory[r.category] = r.c;
 
-      const statusRows = db.prepare(
+      const statusRows = await db.prepare(
         "SELECT status, COUNT(*) as c FROM feedback GROUP BY status"
       ).all() as any[];
       const byStatus: Record<string, number> = {};
       for (const r of statusRows) byStatus[r.status] = r.c;
 
-      const topRows = db.prepare(
+      const topRows = await db.prepare(
         "SELECT * FROM feedback WHERE status = 'open' ORDER BY votes DESC LIMIT 5"
       ).all() as any[];
       const topVoted = topRows.map((r: any) => this.rowToFeedback(r));
 
-      const totals = db.prepare(
+      const totals = await db.prepare(
         "SELECT COALESCE(SUM(estimated_tokens_saved), 0) as tokens, COALESCE(SUM(estimated_time_saved_minutes), 0) as minutes FROM feedback"
       ).get() as any;
 
@@ -504,7 +504,7 @@ export class FeedbackStore {
   async getVoteLog(feedbackId: string): Promise<Array<{ evidence: string | null; estimatedTokensSaved: number | null; estimatedTimeSavedMinutes: number | null; sessionId: string; createdAt: number }>> {
     await this.init();
     return this.withDb(async (db) => {
-      const rows = db.prepare(
+      const rows = await db.prepare(
         "SELECT session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at FROM vote_log WHERE feedback_id = ? ORDER BY created_at DESC"
       ).all(feedbackId) as any[];
       return rows.map((r: any) => ({
@@ -523,7 +523,7 @@ export class FeedbackStore {
 
     await this.init();
     const rows = await this.withDb(async (db) => {
-      return db.prepare(
+      return await db.prepare(
         "SELECT id, content FROM feedback WHERE embedding IS NULL"
       ).all() as any[];
     });
@@ -533,12 +533,12 @@ export class FeedbackStore {
     const embedded: Array<{ id: string; embedding: Buffer }> = [];
     for (const row of rows) {
       const vec = await this.embed(row.content);
-      embedded.push({ id: row.id, embedding: Buffer.from(vec.buffer, vec.byteOffset, vec.byteLength) });
+      embedded.push({ id: row.id, embedding: vecBuf(vec) });
     }
 
     await this.withDb(async (db) => {
       for (const e of embedded) {
-        db.prepare("UPDATE feedback SET embedding = ? WHERE id = ?").run(e.embedding, e.id);
+        await db.prepare("UPDATE feedback SET embedding = ? WHERE id = ?").run(e.embedding, e.id);
       }
     });
 
@@ -633,7 +633,7 @@ export class FeedbackStore {
   async purge(): Promise<number> {
     await this.init();
     return this.withDb(async (db) => {
-      const result = db.prepare("DELETE FROM feedback WHERE status = 'dismissed'").run();
+      const result = await db.prepare("DELETE FROM feedback WHERE status = 'dismissed'").run();
       return result.changes;
     });
   }
