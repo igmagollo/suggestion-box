@@ -45,6 +45,17 @@ export function keywordSimilarity(keywords: string, title: string): number {
   return intersection / union;
 }
 
+/**
+ * Returns true if a GitHub issue title looks like it was created by suggestion-box.
+ * Suggestion-box always formats titles as `[<category label>] <summary>`, so any
+ * title matching the pattern `[...] ` (bracket-wrapped tag at the start) is treated
+ * as a suggestion-box issue and excluded from dedup candidates.
+ * This handles both built-in categories and arbitrary custom categories.
+ */
+export function isSuggestionBoxIssueTitle(title: string): boolean {
+  return /^\[.+\] /.test(title);
+}
+
 function searchExistingIssues(repo: string, keywords: string): ExistingIssue | null {
   try {
     const raw = execFileSync(
@@ -53,10 +64,8 @@ function searchExistingIssues(repo: string, keywords: string): ExistingIssue | n
       { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
     );
     const issues: ExistingIssue[] = JSON.parse(raw.trim() || "[]");
-    // Skip issues created by suggestion-box, then pick best match above similarity threshold
-    const candidates = issues.filter((i) =>
-      !i.title.includes("[Friction Report]") && !i.title.includes("[Feature Request]") && !i.title.includes("[Observation]")
-    );
+    // Skip issues created by suggestion-box (any category), then pick best match above similarity threshold
+    const candidates = issues.filter((i) => !isSuggestionBoxIssueTitle(i.title));
     const SIMILARITY_THRESHOLD = 0.3;
     for (const candidate of candidates) {
       if (keywordSimilarity(keywords, candidate.title) >= SIMILARITY_THRESHOLD) {
