@@ -27,6 +27,14 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
   }
 }
 
+const ALLOWED_TOOLS = [
+  "mcp__suggestion-box__suggestion_box_submit_feedback",
+  "mcp__suggestion-box__suggestion_box_upvote_feedback",
+  "mcp__suggestion-box__suggestion_box_list_feedback",
+  "mcp__suggestion-box__suggestion_box_status",
+  "mcp__suggestion-box__suggestion_box_dismiss_feedback",
+];
+
 function getCliCommand(): { command: string; args: string[] } {
   const execPath = process.argv[1] ?? "";
   if (execPath.includes("node_modules")) {
@@ -369,6 +377,13 @@ enabled = true
     } else {
       console.log(`${prefix}SessionStart hook already present in .claude/settings.json`);
     }
+    const existingAllow: string[] = settings?.permissions?.allow ?? [];
+    const missingTools = ALLOWED_TOOLS.filter(t => !existingAllow.includes(t));
+    if (missingTools.length > 0) {
+      console.log(`${prefix}Would add ${missingTools.length} tool(s) to permissions.allow in .claude/settings.json`);
+    } else {
+      console.log(`${prefix}All suggestion-box tools already in permissions.allow`);
+    }
   } else {
     if (!existsSync(claudeSettingsDir)) mkdirSync(claudeSettingsDir, { recursive: true });
 
@@ -392,8 +407,22 @@ enabled = true
         hooks: [{ type: "command", command: hookCmd, timeout: 10 }],
       });
       settings.hooks.SessionStart = existing;
-      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    }
+
+    // Add pre-authorized tools to permissions.allow
+    if (!settings.permissions) settings.permissions = {};
+    if (!Array.isArray(settings.permissions.allow)) settings.permissions.allow = [];
+    const missingTools = ALLOWED_TOOLS.filter(t => !settings.permissions.allow.includes(t));
+    if (missingTools.length > 0) {
+      settings.permissions.allow.push(...missingTools);
+    }
+
+    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    if (!hasHook) {
       console.log("  Installed SessionStart hook (.claude/settings.json)");
+    }
+    if (missingTools.length > 0) {
+      console.log(`  Added ${missingTools.length} tool(s) to permissions.allow (.claude/settings.json)`);
     }
   }
 
@@ -482,12 +511,15 @@ enabled = true
     }
   }
 
-  // Remove SessionStart hook from .claude/settings.json (project-scoped)
+  // Remove SessionStart hook and allowed tools from .claude/settings.json (project-scoped)
   const claudeSettingsDir = join(targetDir, ".claude");
   const settingsPath = join(claudeSettingsDir, "settings.json");
   if (existsSync(settingsPath)) {
     try {
       const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+      let changed = false;
+
+      // Remove SessionStart hook
       const sessionStart: any[] = settings?.hooks?.SessionStart ?? [];
       const filtered = sessionStart.filter((h: any) =>
         !h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
@@ -499,8 +531,28 @@ enabled = true
         } else {
           settings.hooks.SessionStart = filtered;
         }
+        console.log("  Removed SessionStart hook from .claude/settings.json");
+        changed = true;
+      }
+
+      // Remove allowed tools from permissions.allow
+      if (Array.isArray(settings?.permissions?.allow)) {
+        const before = settings.permissions.allow.length;
+        settings.permissions.allow = settings.permissions.allow.filter(
+          (t: string) => !ALLOWED_TOOLS.includes(t)
+        );
+        if (settings.permissions.allow.length !== before) {
+          if (settings.permissions.allow.length === 0) {
+            delete settings.permissions.allow;
+            if (Object.keys(settings.permissions).length === 0) delete settings.permissions;
+          }
+          console.log("  Removed suggestion-box tools from permissions.allow (.claude/settings.json)");
+          changed = true;
+        }
+      }
+
+      if (changed) {
         writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-        console.log("  Removed SessionStart hook from ~/.claude/settings.json");
         removed++;
       }
     } catch {}
