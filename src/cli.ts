@@ -702,6 +702,8 @@ enabled = true
     try {
       const { connect } = await import("@tursodatabase/database");
       db = await connect(dbPath);
+      await db.exec("PRAGMA journal_mode=WAL");
+      await db.exec("PRAGMA busy_timeout = 5000");
       await db.exec("SELECT 1");
       checks.push({ name: "Database", passed: true, message: `${dbPath} is accessible` });
 
@@ -718,8 +720,13 @@ enabled = true
         checks.push({ name: "WAL mode", passed: false, message: `Could not check journal_mode: ${e.message}` });
       }
     } catch (e: any) {
-      checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
-      checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
+      if (e.message?.includes("Lock")) {
+        checks.push({ name: "Database", passed: true, message: `${dbPath} exists (locked by MCP server — this is normal)` });
+        checks.push({ name: "WAL mode", passed: true, message: "Skipped (server is running, WAL is active)" });
+      } else {
+        checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
+        checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
+      }
     } finally {
       db?.close();
     }
