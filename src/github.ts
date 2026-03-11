@@ -33,17 +33,37 @@ interface ExistingIssue {
   url: string;
 }
 
+function keywordSimilarity(keywords: string, title: string): number {
+  const kwSet = new Set(keywords.toLowerCase().split(/\s+/).filter(w => w.length > 2));
+  const titleSet = new Set(title.toLowerCase().replace(/[^\w\s]/g, " ").split(/\s+/).filter(w => w.length > 2));
+  if (kwSet.size === 0 || titleSet.size === 0) return 0;
+  let intersection = 0;
+  for (const w of kwSet) {
+    if (titleSet.has(w)) intersection++;
+  }
+  const union = new Set([...kwSet, ...titleSet]).size;
+  return intersection / union;
+}
+
 function searchExistingIssues(repo: string, keywords: string): ExistingIssue | null {
   try {
     const raw = execFileSync(
       "gh",
-      ["issue", "list", "--repo", repo, "--search", keywords, "--state", "open", "--json", "number,title,url", "--limit", "5"],
+      ["issue", "list", "--repo", repo, "--search", `${keywords} in:title`, "--state", "open", "--json", "number,title,url", "--limit", "5"],
       { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] },
     );
     const issues: ExistingIssue[] = JSON.parse(raw.trim() || "[]");
-    // Skip issues created by suggestion-box (they have our tag in the title)
-    const match = issues.find((i) => !i.title.includes("[Friction Report]") && !i.title.includes("[Feature Request]") && !i.title.includes("[Observation]"));
-    return match ?? null;
+    // Skip issues created by suggestion-box, then pick best match above similarity threshold
+    const candidates = issues.filter((i) =>
+      !i.title.includes("[Friction Report]") && !i.title.includes("[Feature Request]") && !i.title.includes("[Observation]")
+    );
+    const SIMILARITY_THRESHOLD = 0.3;
+    for (const candidate of candidates) {
+      if (keywordSimilarity(keywords, candidate.title) >= SIMILARITY_THRESHOLD) {
+        return candidate;
+      }
+    }
+    return null;
   } catch {
     // Search failed — proceed with creation
     return null;
@@ -64,7 +84,7 @@ function reactAndComment(
       { stdio: "pipe" },
     );
   } catch {
-    // Reaction may already exist or lack permissions — not critical
+    console.error("Warning: could not add reaction to issue");
   }
 
   // Post a comment with vote count and evidence
@@ -90,7 +110,7 @@ function reactAndComment(
       { stdio: "pipe" },
     );
   } catch {
-    // Comment failed — not critical
+    console.error("Warning: could not post comment to issue");
   }
 }
 
