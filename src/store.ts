@@ -61,6 +61,35 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 `;
 
+/**
+ * Create (or migrate) the database schema at the given path.
+ * Safe to call even if the DB already exists — all statements are idempotent.
+ * Does not require an embedder and imposes no side effects beyond writing the DB file.
+ */
+export async function initDb(dbPath: string): Promise<void> {
+  const db = await connect(dbPath);
+  try {
+    await db.exec("PRAGMA journal_mode=WAL");
+    await db.exec("PRAGMA busy_timeout = 5000");
+    await db.exec(SCHEMA);
+    // Run migrations so an existing DB is kept up to date too
+    for (const migration of [
+      "ALTER TABLE feedback ADD COLUMN title TEXT",
+      "ALTER TABLE feedback ADD COLUMN git_sha TEXT",
+      "ALTER TABLE feedback ADD COLUMN session_id TEXT NOT NULL DEFAULT ''",
+      "ALTER TABLE feedback ADD COLUMN metadata TEXT",
+    ]) {
+      try {
+        await db.exec(migration);
+      } catch {
+        // Column already exists — ignore
+      }
+    }
+  } finally {
+    db.close();
+  }
+}
+
 export class FeedbackStore {
   private initialized = false;
 
