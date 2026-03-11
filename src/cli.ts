@@ -332,9 +332,9 @@ enabled = true
     console.log("  Wrote opencode.json (OpenCode)");
   }
 
-  // Claude Code hooks — ~/.claude/settings.json
-  const claudeDir = join(process.env.HOME ?? "~", ".claude");
-  const settingsPath = join(claudeDir, "settings.json");
+  // Claude Code hooks — .claude/settings.json (project-scoped)
+  const claudeSettingsDir = join(targetDir, ".claude");
+  const settingsPath = join(claudeSettingsDir, "settings.json");
 
   if (dryRun) {
     let settings: any = {};
@@ -346,12 +346,12 @@ enabled = true
       h.hooks?.some((hh: any) => hh.command?.includes("suggestion-box") && hh.command?.includes("hook"))
     );
     if (!hasHook) {
-      console.log(`${prefix}Would install SessionStart hook in ~/.claude/settings.json`);
+      console.log(`${prefix}Would install SessionStart hook in .claude/settings.json`);
     } else {
-      console.log(`${prefix}SessionStart hook already present in ~/.claude/settings.json`);
+      console.log(`${prefix}SessionStart hook already present in .claude/settings.json`);
     }
   } else {
-    if (!existsSync(claudeDir)) mkdirSync(claudeDir, { recursive: true });
+    if (!existsSync(claudeSettingsDir)) mkdirSync(claudeSettingsDir, { recursive: true });
 
     let settings: any = {};
     if (existsSync(settingsPath)) {
@@ -374,7 +374,7 @@ enabled = true
       });
       settings.hooks.SessionStart = existing;
       writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
-      console.log("  Installed SessionStart hook (~/.claude/settings.json)");
+      console.log("  Installed SessionStart hook (.claude/settings.json)");
     }
   }
 
@@ -463,9 +463,9 @@ enabled = true
     }
   }
 
-  // Remove SessionStart hook from ~/.claude/settings.json
-  const claudeDir = join(process.env.HOME ?? "~", ".claude");
-  const settingsPath = join(claudeDir, "settings.json");
+  // Remove SessionStart hook from .claude/settings.json (project-scoped)
+  const claudeSettingsDir = join(targetDir, ".claude");
+  const settingsPath = join(claudeSettingsDir, "settings.json");
   if (existsSync(settingsPath)) {
     try {
       const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
