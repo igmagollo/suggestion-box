@@ -8,6 +8,7 @@ export type {
   SortBy,
   SupervisorConfig,
   Feedback,
+  FeedbackMetadata,
   SubmitFeedbackInput,
   SubmitFeedbackResult,
   UpvoteInput,

@@ -54,7 +54,7 @@ Use category "observation" when:
 
 If similar feedback already exists, your submission becomes a vote on it instead of creating a duplicate. Include impact estimates to help prioritize.`,
     submitFeedbackSchema.shape,
-    async ({ category, title, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes, git_sha }) => {
+    async ({ category, title, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes, git_sha, tool_version }) => {
       try {
         store.embedPending().catch((e) => console.error("[suggestion-box] embedPending error:", e));
 
@@ -68,6 +68,7 @@ If similar feedback already exists, your submission becomes a vote on it instead
           estimatedTokensSaved: estimated_tokens_saved,
           estimatedTimeSavedMinutes: estimated_time_saved_minutes,
           gitSha: git_sha,
+          toolVersion: tool_version,
         });
 
         if (result.isDuplicate) {
@@ -153,7 +154,14 @@ If similar feedback already exists, your submission becomes a vote on it instead
           text += `Target: ${item.targetType}/${item.targetName}`;
           if (item.githubRepo) text += ` (repo: ${item.githubRepo})`;
           if (item.gitSha) text += ` (sha: ${item.gitSha.slice(0, 8)})`;
-          text += `\n${item.content}\n\n`;
+          text += "\n";
+          if (item.metadata) {
+            const vParts: string[] = [];
+            if (item.metadata.suggestionBoxVersion) vParts.push(`sb@${item.metadata.suggestionBoxVersion}`);
+            if (item.metadata.toolVersion) vParts.push(`tool@${item.metadata.toolVersion}`);
+            if (vParts.length > 0) text += `Versions: ${vParts.join(", ")}\n`;
+          }
+          text += `${item.content}\n\n`;
         }
 
         return { content: [{ type: "text" as const, text }] };

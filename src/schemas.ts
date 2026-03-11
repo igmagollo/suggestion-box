@@ -20,6 +20,7 @@ export const submitFeedbackSchema = z.object({
   estimated_tokens_saved: z.coerce.number().optional().describe("Estimated tokens this improvement would save per occurrence"),
   estimated_time_saved_minutes: z.coerce.number().optional().describe("Estimated minutes this improvement would save per occurrence"),
   git_sha: z.string().optional().describe("Git HEAD SHA at time of feedback (auto-detected if omitted)"),
+  tool_version: z.string().optional().describe("Version of the target tool, if known (e.g., '1.2.3')"),
 });
 
 export const upvoteFeedbackSchema = z.object({

@@ -161,6 +161,25 @@ describe("submitFeedbackSchema", () => {
         expect(result.data.git_sha).toBe("abc123def456");
       }
     });
+
+    test("accepts optional tool_version", () => {
+      const result = submitFeedbackSchema.safeParse({
+        ...validInput,
+        tool_version: "1.2.3",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.tool_version).toBe("1.2.3");
+      }
+    });
+
+    test("tool_version is optional", () => {
+      const result = submitFeedbackSchema.safeParse(validInput);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.tool_version).toBeUndefined();
+      }
+    });
   });
 });
 

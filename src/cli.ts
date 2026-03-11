@@ -141,6 +141,15 @@ IMPORTANT RULES:
       console.log(`--- [${r.category}] ${r.status} | ${r.votes} votes | ${timeAgo(r.created_at)} ---`);
       console.log(`ID: ${r.id}`);
       console.log(`Target: ${r.target_type}/${r.target_name}${r.github_repo ? ` (repo: ${r.github_repo})` : ""}`);
+      if (r.metadata) {
+        try {
+          const meta = JSON.parse(r.metadata);
+          const parts: string[] = [];
+          if (meta.suggestionBoxVersion) parts.push(`sb@${meta.suggestionBoxVersion}`);
+          if (meta.toolVersion) parts.push(`tool@${meta.toolVersion}`);
+          if (parts.length > 0) console.log(`Versions: ${parts.join(", ")}`);
+        } catch {}
+      }
       console.log(r.content.slice(0, 500));
       if (r.content.length > 500) console.log(`  ...(${r.content.length} chars total)`);
       console.log();
@@ -196,6 +205,11 @@ IMPORTANT RULES:
       "SELECT session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at FROM vote_log WHERE feedback_id = ?"
     ).all(feedbackId) as any[];
 
+    let metadata = null;
+    if (row.metadata) {
+      try { metadata = JSON.parse(row.metadata); } catch {}
+    }
+
     const result = createGithubIssue(repo, {
       id: row.id,
       title: row.title ?? null,
@@ -213,6 +227,7 @@ IMPORTANT RULES:
       publishedIssueUrl: row.published_issue_url,
       sessionId: row.session_id,
       gitSha: row.git_sha ?? null,
+      metadata,
     }, voteRows);
 
     const now = Math.floor(Date.now() / 1000);

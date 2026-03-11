@@ -27,6 +27,16 @@ export interface SupervisorConfig {
   persistent?: boolean;
 }
 
+/** Version metadata captured at feedback submission time. */
+export interface FeedbackMetadata {
+  /** suggestion-box version that created this entry */
+  suggestionBoxVersion?: string;
+  /** Version of the target tool, if known */
+  toolVersion?: string;
+  /** Any additional key-value pairs */
+  [key: string]: unknown;
+}
+
 export interface Feedback {
   id: string;
   title: string | null;
@@ -44,6 +54,7 @@ export interface Feedback {
   publishedIssueUrl: string | null;
   sessionId: string;
   gitSha: string | null;
+  metadata: FeedbackMetadata | null;
 }
 
 export interface SubmitFeedbackInput {
@@ -56,6 +67,7 @@ export interface SubmitFeedbackInput {
   estimatedTokensSaved?: number;
   estimatedTimeSavedMinutes?: number;
   gitSha?: string;
+  toolVersion?: string;
 }
 
 export interface SubmitFeedbackResult {
