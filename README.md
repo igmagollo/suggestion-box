@@ -77,6 +77,19 @@ suggestion-box dismiss <id>
 
 Or do it conversationally — ask your agent to list feedback, review together, and publish the ones you approve.
 
+## Built with suggestion-box
+
+The issues below were actually filed by AI agents using suggestion-box while developing this project:
+
+- [#84 — Publish flow requires two-step manual intervention](https://github.com/igmagollo/suggestion-box/issues/84) (observation)
+- [#107 — Demo GIF for README](https://github.com/igmagollo/suggestion-box/issues/107) (feature request)
+- [#108 — Homebrew formula for CLI distribution](https://github.com/igmagollo/suggestion-box/issues/108) (feature request)
+- [#111 — Doctor command for troubleshooting](https://github.com/igmagollo/suggestion-box/issues/111) (feature request)
+- [#113 — Configurable feedback categories](https://github.com/igmagollo/suggestion-box/issues/113) (feature request)
+- [#116 — README badge showing feedback count](https://github.com/igmagollo/suggestion-box/issues/116) (feature request)
+
+These were all captured automatically during development — no manual issue filing needed. See the full set of agent-filed issues at [#84–#131](https://github.com/igmagollo/suggestion-box/issues?q=is%3Aissue+label%3Asuggestion-box).
+
 ## Environment variables
 
 | Variable | Description | Default |
