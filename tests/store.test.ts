@@ -598,10 +598,8 @@ describe("FeedbackStore", () => {
   });
 
   describe("concurrent access (WAL mode)", () => {
-    test("persistent-mode store and a short-lived store can coexist on the same DB", async () => {
-      // Simulates the real-world scenario: MCP server holds a persistent connection
-      // while a CLI command opens a short-lived connection to the same database.
-      // This is the core fix for issue #149.
+    test("two stores in the same process can coexist on the same DB", async () => {
+      // Basic same-process sanity check. WAL mode should allow concurrent readers.
       const serverStore = new FeedbackStore(createConfig(dbPath, { persistent: true }));
       await serverStore.init();
 
@@ -619,5 +617,80 @@ describe("FeedbackStore", () => {
 
       await serverStore.close();
     });
+
+    test("cross-process: CLI can read DB while MCP server holds a persistent connection", async () => {
+      // This is the actual regression test for issue #149.
+      // The MCP server (process A) keeps a bun:sqlite connection open in WAL mode,
+      // and a CLI command (process B) opens a short-lived connection to the same file.
+      // With @tursodatabase/database this would fail with:
+      //   "Locking error: Failed locking file. File is locked by another process"
+      // With bun:sqlite in WAL mode it succeeds.
+
+      // Server script: init DB, write a row, signal readiness, wait for signal, close.
+      const serverScript = `
+import { FeedbackStore } from ${JSON.stringify(import.meta.dir + "/../src/store.js")};
+import { TRIGRAM_MODE } from ${JSON.stringify(import.meta.dir + "/../src/embedder.js")};
+
+const dbPath = process.argv[1];
+const embed = Object.assign(async () => new Float32Array(0), { [TRIGRAM_MODE]: true });
+const store = new FeedbackStore({ dbPath, sessionId: "server", embed, persistent: true });
+await store.init();
+await store.submitFeedback({
+  category: "friction",
+  content: "Cross-process lock test content that is long enough to pass validation",
+  targetType: "mcp_server",
+  targetName: "test-server",
+});
+// Signal parent that DB is ready and connection is held open
+process.stdout.write("READY\\n");
+// Wait for parent to tell us to shut down
+await new Promise(resolve => process.stdin.once("data", resolve));
+await store.close();
+`;
+
+      const serverProc = Bun.spawn(["bun", "--eval", serverScript, dbPath], {
+        stdout: "pipe",
+        stdin: "pipe",
+        stderr: "pipe",
+      });
+
+      // Wait until server signals it's ready
+      const reader = serverProc.stdout.getReader();
+      let readySignal = "";
+      while (!readySignal.includes("READY")) {
+        const { value } = await reader.read();
+        if (!value) break;
+        readySignal += new TextDecoder().decode(value);
+      }
+
+      // CLI script: open, read, close — must not throw a lock error
+      const cliScript = `
+import { FeedbackStore } from ${JSON.stringify(import.meta.dir + "/../src/store.js")};
+import { TRIGRAM_MODE } from ${JSON.stringify(import.meta.dir + "/../src/embedder.js")};
+
+const dbPath = process.argv[1];
+const embed = Object.assign(async () => new Float32Array(0), { [TRIGRAM_MODE]: true });
+const store = new FeedbackStore({ dbPath, sessionId: "cli", embed, persistent: false });
+const stats = await store.getStats();
+process.stdout.write(JSON.stringify(stats) + "\\n");
+`;
+
+      const cliProc = Bun.spawn(["bun", "--eval", cliScript, dbPath], {
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      const cliOutput = await new Response(cliProc.stdout).text();
+      const cliExit = await cliProc.exited;
+
+      // Tell server to shut down
+      serverProc.stdin.write("done\n");
+      serverProc.stdin.end();
+      await serverProc.exited;
+
+      expect(cliExit, "CLI process should exit cleanly (no lock error)").toBe(0);
+      const stats = JSON.parse(cliOutput.trim());
+      expect(stats.total).toBe(1);
+    }, 15000); // 15s timeout for process spawning
   });
 });
