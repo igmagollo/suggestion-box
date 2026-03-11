@@ -92,6 +92,7 @@ export class FeedbackStore {
       }
     }
 
+    await db.exec("PRAGMA journal_mode=WAL");
     await db.exec("PRAGMA busy_timeout = 5000");
     try {
       return await fn(db);
@@ -117,7 +118,7 @@ export class FeedbackStore {
     const now = Math.floor(Date.now() / 1000);
 
     const embedding = await this.embed(input.content);
-    const duplicate = await this.findSimilar(embedding);
+    const duplicate = await this.findSimilar(embedding, input.targetType, input.targetName);
 
     if (duplicate) {
       await this.withDb(async (db) => {
@@ -158,7 +159,7 @@ export class FeedbackStore {
     return { feedbackId: id, isDuplicate: false, votes: 1 };
   }
 
-  private async findSimilar(embedding: Float32Array): Promise<Feedback | null> {
+  private async findSimilar(embedding: Float32Array, targetType: string, targetName: string): Promise<Feedback | null> {
     return this.withDb(async (db) => {
       const vfn = this.vfn;
       const rows = await db.prepare(`
@@ -168,9 +169,10 @@ export class FeedbackStore {
                vector_distance_cos(${vfn}(embedding), ${vfn}(?)) AS distance
         FROM feedback
         WHERE embedding IS NOT NULL AND status = 'open'
+          AND target_type = ? AND target_name = ?
         ORDER BY distance ASC
         LIMIT 1
-      `).all(vecBuf(embedding)) as any[];
+      `).all(vecBuf(embedding), targetType, targetName) as any[];
 
       if (rows.length === 0) return null;
       const row = rows[0];

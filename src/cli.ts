@@ -18,6 +18,7 @@ async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
     process.exit(0);
   }
   const db = await connect(dbPath);
+  await db.exec("PRAGMA journal_mode=WAL");
   await db.exec("PRAGMA busy_timeout = 5000");
   try {
     return await fn(db);
