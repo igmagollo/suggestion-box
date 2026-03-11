@@ -1,5 +1,6 @@
 import { connect } from "@tursodatabase/database";
 import { randomUUID } from "crypto";
+import { isTrigramMode, trigramSimilarity, DEFAULT_TRIGRAM_THRESHOLD } from "./embedder.js";
 import type {
   SupervisorConfig,
   Feedback,
@@ -65,6 +66,8 @@ export class FeedbackStore {
   private readonly dedupThreshold: number;
   private readonly persistent: boolean;
   private cachedDb: Database | null = null;
+  private readonly useTrigramDedup: boolean;
+  private readonly trigramThreshold: number;
 
   constructor(config: SupervisorConfig) {
     this.dbPath = config.dbPath;
@@ -73,6 +76,8 @@ export class FeedbackStore {
     this.vectorType = config.vectorType ?? "vector32";
     this.dedupThreshold = config.dedupThreshold ?? 0.85;
     this.persistent = config.persistent ?? false;
+    this.useTrigramDedup = isTrigramMode(config.embed);
+    this.trigramThreshold = DEFAULT_TRIGRAM_THRESHOLD;
   }
 
   /**
@@ -155,8 +160,9 @@ export class FeedbackStore {
     await this.init();
     const now = Math.floor(Date.now() / 1000);
 
-    const embedding = await this.embed(input.content);
-    const duplicate = await this.findSimilar(embedding, input.targetType, input.targetName);
+    const duplicate = this.useTrigramDedup
+      ? await this.findSimilarByTrigram(input.content, input.targetType, input.targetName)
+      : await this.findSimilarByEmbedding(input.content, input.targetType, input.targetName);
 
     if (duplicate) {
       await this.withDb(async (db) => {
@@ -178,12 +184,14 @@ export class FeedbackStore {
     }
 
     const id = randomUUID();
+    const embedding = this.useTrigramDedup ? null : await this.embed(input.content);
+
     await this.withDb(async (db) => {
       await db.prepare(
         `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?)`
       ).run(
-        id, input.title ?? null, input.content, vecBuf(embedding), input.category, input.targetType,
+        id, input.title ?? null, input.content, embedding ? vecBuf(embedding) : null, input.category, input.targetType,
         input.targetName, input.githubRepo ?? null,
         input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null,
         now, now, this.sessionId
@@ -197,7 +205,9 @@ export class FeedbackStore {
     return { feedbackId: id, isDuplicate: false, votes: 1 };
   }
 
-  private async findSimilar(embedding: Float32Array, targetType: string, targetName: string): Promise<Feedback | null> {
+  /** Find similar feedback using cosine distance on embeddings (HuggingFace mode). */
+  private async findSimilarByEmbedding(content: string, targetType: string, targetName: string): Promise<Feedback | null> {
+    const embedding = await this.embed(content);
     return this.withDb(async (db) => {
       const vfn = this.vfn;
       const rows = await db.prepare(`
@@ -218,6 +228,37 @@ export class FeedbackStore {
       if (similarity < this.dedupThreshold) return null;
 
       return this.rowToFeedback(row);
+    });
+  }
+
+  /** Find similar feedback using trigram Jaccard similarity (lightweight fallback). */
+  private async findSimilarByTrigram(content: string, targetType: string, targetName: string): Promise<Feedback | null> {
+    return this.withDb(async (db) => {
+      const rows = await db.prepare(`
+        SELECT id, title, content, category, target_type, target_name, github_repo,
+               status, votes, estimated_tokens_saved, estimated_time_saved_minutes,
+               created_at, updated_at, published_issue_url, session_id
+        FROM feedback
+        WHERE status = 'open'
+          AND target_type = ? AND target_name = ?
+      `).all(targetType, targetName) as any[];
+
+      if (rows.length === 0) return null;
+
+      let bestRow: any = null;
+      let bestSimilarity = 0;
+
+      for (const row of rows) {
+        const sim = trigramSimilarity(content, row.content);
+        if (sim > bestSimilarity) {
+          bestSimilarity = sim;
+          bestRow = row;
+        }
+      }
+
+      if (!bestRow || bestSimilarity < this.trigramThreshold) return null;
+
+      return this.rowToFeedback(bestRow);
     });
   }
 
@@ -386,6 +427,9 @@ export class FeedbackStore {
   }
 
   async embedPending(): Promise<number> {
+    // In trigram mode, embeddings are not used — nothing to backfill
+    if (this.useTrigramDedup) return 0;
+
     await this.init();
     const rows = await this.withDb(async (db) => {
       return await db.prepare(
