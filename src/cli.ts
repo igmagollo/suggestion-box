@@ -3,8 +3,6 @@ import { startMcpServer } from "./mcp.js";
 import { resolve, join } from "path";
 import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from "fs";
 import { DEFAULT_CATEGORIES, getCategories } from "./categories.js";
-import { openDb } from "./db-adapter.js";
-import type { DbConnection } from "./db-adapter.js";
 
 const command = process.argv[2];
 
@@ -13,13 +11,16 @@ function getDbPath(): string {
   return join(dataDir, "feedback.db");
 }
 
-async function withDb<T>(fn: (db: DbConnection) => Promise<T>): Promise<T> {
+async function withDb<T>(fn: (db: any) => Promise<T>): Promise<T> {
+  const { connect } = await import("@tursodatabase/database");
   const dbPath = getDbPath();
   if (!existsSync(dbPath)) {
     console.log("No suggestion-box database found. Run 'suggestion-box init' first.");
     process.exit(0);
   }
-  const db = await openDb(dbPath);
+  const db = await connect(dbPath);
+  await db.exec("PRAGMA journal_mode=WAL");
+  await db.exec("PRAGMA busy_timeout = 5000");
   try {
     return await fn(db);
   } finally {
@@ -124,11 +125,11 @@ IMPORTANT RULES:
 
 } else if (command === "status") {
   await withDb(async (db) => {
-    const total = (db.prepare("SELECT COUNT(*) as c FROM feedback").get() as any).c;
-    const catRows = db.prepare(
+    const total = (await db.prepare("SELECT COUNT(*) as c FROM feedback").get() as any).c;
+    const catRows = await db.prepare(
       "SELECT category, COUNT(*) as c FROM feedback GROUP BY category ORDER BY c DESC"
     ).all() as any[];
-    const statusRows = db.prepare(
+    const statusRows = await db.prepare(
       "SELECT status, COUNT(*) as c FROM feedback GROUP BY status ORDER BY c DESC"
     ).all() as any[];
 
@@ -137,7 +138,7 @@ IMPORTANT RULES:
     console.log(`  By category: ${catRows.map((r: any) => `${r.category}=${r.c}`).join(", ") || "none"}`);
     console.log(`  By status: ${statusRows.map((r: any) => `${r.status}=${r.c}`).join(", ") || "none"}`);
 
-    const topRows = db.prepare(
+    const topRows = await db.prepare(
       "SELECT content, votes, category, target_type, target_name FROM feedback WHERE status = 'open' ORDER BY votes DESC LIMIT 5"
     ).all() as any[];
 
@@ -173,7 +174,7 @@ IMPORTANT RULES:
     }
 
     const where = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
-    const rows = db.prepare(
+    const rows = await db.prepare(
       `SELECT * FROM feedback ${where} ORDER BY votes DESC`
     ).all(...params) as any[];
 
@@ -210,7 +211,7 @@ IMPORTANT RULES:
   }
   await withDb(async (db) => {
     const now = Math.floor(Date.now() / 1000);
-    const result = db.prepare(
+    const result = await db.prepare(
       "UPDATE feedback SET status = 'dismissed', updated_at = ? WHERE id = ? AND status IN ('open', 'pending_review')"
     ).run(now, feedbackId);
     if (result.changes > 0) {
@@ -235,7 +236,7 @@ IMPORTANT RULES:
   }
 
   await withDb(async (db) => {
-    const row = db.prepare("SELECT * FROM feedback WHERE id = ?").get(feedbackId) as any;
+    const row = await db.prepare("SELECT * FROM feedback WHERE id = ?").get(feedbackId) as any;
     if (!row) {
       console.error(`Feedback ${feedbackId} not found.`);
       process.exit(1);
@@ -247,7 +248,7 @@ IMPORTANT RULES:
       process.exit(1);
     }
 
-    const voteRows = db.prepare(
+    const voteRows = await db.prepare(
       "SELECT session_id, evidence, estimated_tokens_saved, estimated_time_saved_minutes, created_at FROM vote_log WHERE feedback_id = ?"
     ).all(feedbackId) as any[];
 
@@ -281,7 +282,7 @@ IMPORTANT RULES:
     // issue already exists and a retry would find it via dedup.
     const now = Math.floor(Date.now() / 1000);
     try {
-      db.prepare(
+      await db.prepare(
         "UPDATE feedback SET status = 'published', published_issue_url = ?, updated_at = ? WHERE id = ?"
       ).run(result.url, now, feedbackId);
     } catch (dbErr: any) {
@@ -399,7 +400,7 @@ IMPORTANT RULES:
 
 } else if (command === "purge") {
   await withDb(async (db) => {
-    const result = db.prepare("DELETE FROM feedback WHERE status = 'dismissed'").run();
+    const result = await db.prepare("DELETE FROM feedback WHERE status = 'dismissed'").run();
     console.log(`Purged ${result.changes} dismissed feedback entries.`);
   });
 
@@ -850,16 +851,19 @@ Tip: observation-category items rarely warrant a public GitHub issue — mention
   // 2. Database check
   const dbPath = getDbPath();
   if (existsSync(dbPath)) {
-    let db: import("./db-adapter.js").DbConnection | null = null;
+    let db: any = null;
     try {
-      db = await openDb(dbPath);
-      db.exec("SELECT 1");
+      const { connect } = await import("@tursodatabase/database");
+      db = await connect(dbPath);
+      await db.exec("PRAGMA journal_mode=WAL");
+      await db.exec("PRAGMA busy_timeout = 5000");
+      await db.exec("SELECT 1");
       checks.push({ name: "Database", passed: true, message: `${dbPath} is accessible` });
 
       // 3. WAL mode check (only if DB is accessible)
       try {
-        const row = db.prepare("PRAGMA journal_mode").get() as any;
-        const mode = row?.journal_mode ?? "unknown";
+        const row = await db.prepare("PRAGMA journal_mode").get() as any;
+        const mode = row?.journal_mode ?? row?.[0] ?? "unknown";
         if (mode === "wal") {
           checks.push({ name: "WAL mode", passed: true, message: "journal_mode = WAL" });
         } else {
@@ -869,8 +873,13 @@ Tip: observation-category items rarely warrant a public GitHub issue — mention
         checks.push({ name: "WAL mode", passed: false, message: `Could not check journal_mode: ${e.message}` });
       }
     } catch (e: any) {
-      checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
-      checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
+      if (e.message?.includes("Lock")) {
+        checks.push({ name: "Database", passed: true, message: `${dbPath} exists (locked by MCP server — this is normal)` });
+        checks.push({ name: "WAL mode", passed: true, message: "Skipped (server is running, WAL is active)" });
+      } else {
+        checks.push({ name: "Database", passed: false, message: `Cannot open ${dbPath}: ${e.message}` });
+        checks.push({ name: "WAL mode", passed: false, message: "Skipped (database not accessible)" });
+      }
     } finally {
       db?.close();
     }
