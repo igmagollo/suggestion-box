@@ -417,7 +417,9 @@ enabled = true
       settings.permissions.allow.push(...missingTools);
     }
 
-    writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    if (!hasHook || missingTools.length > 0) {
+      writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+    }
     if (!hasHook) {
       console.log("  Installed SessionStart hook (.claude/settings.json)");
     }
