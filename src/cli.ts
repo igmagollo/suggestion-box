@@ -352,32 +352,41 @@ IMPORTANT RULES:
     }
   }
 
-  await withDb(async (db) => {
-    const rows = await db.prepare(
-      `SELECT * FROM feedback WHERE status = 'open' AND votes >= ? ORDER BY votes DESC`
-    ).all(threshold) as any[];
+  const { createFeedbackStore } = await import("./sdk.js");
+  const { randomUUID } = await import("crypto");
 
-    if (rows.length === 0) {
+  const triageStore = createFeedbackStore({
+    dbPath: getDbPath(),
+    sessionId: randomUUID(),
+    embed: async () => new Float32Array(0),
+  });
+
+  try {
+    const result = await triageStore.autoTriage({ threshold });
+
+    if (result.items.length === 0) {
       console.log(`No open feedback with ${threshold} or more votes found.`);
       process.exit(0);
     }
 
-    console.log(`${rows.length} high-signal item(s) with ≥${threshold} votes:\n`);
-    for (const r of rows) {
+    console.log(`${result.items.length} high-signal item(s) with ≥${result.threshold} votes:\n`);
+    for (const item of result.items) {
       const impact = [
-        r.estimated_tokens_saved ? `~${r.estimated_tokens_saved} tokens` : null,
-        r.estimated_time_saved_minutes ? `~${r.estimated_time_saved_minutes}min` : null,
+        item.estimatedTokensSaved ? `~${item.estimatedTokensSaved} tokens` : null,
+        item.estimatedTimeSavedMinutes ? `~${item.estimatedTimeSavedMinutes}min` : null,
       ].filter(Boolean).join(", ");
 
-      console.log(`--- [${r.category}] ${r.votes} votes${impact ? ` | impact: ${impact}` : ""} | ${timeAgo(r.created_at)} ---`);
-      console.log(`ID: ${r.id}`);
-      console.log(`Target: ${r.target_type}/${r.target_name}${r.github_repo ? ` (repo: ${r.github_repo})` : ""}`);
-      if (r.title) console.log(`Title: ${r.title}`);
-      console.log(r.content.slice(0, 500));
-      if (r.content.length > 500) console.log(`  ...(${r.content.length} chars total)`);
+      console.log(`--- [${item.category}] ${item.votes} votes${impact ? ` | impact: ${impact}` : ""} | ${timeAgo(item.createdAt)} ---`);
+      console.log(`ID: ${item.id}`);
+      console.log(`Target: ${item.targetType}/${item.targetName}${item.githubRepo ? ` (repo: ${item.githubRepo})` : ""}`);
+      if (item.title) console.log(`Title: ${item.title}`);
+      console.log(item.content.slice(0, 500));
+      if (item.content.length > 500) console.log(`  ...(${item.content.length} chars total)`);
       console.log();
     }
-  });
+  } finally {
+    await triageStore.close();
+  }
 
 } else if (command === "purge") {
   await withDb(async (db) => {
