@@ -23,6 +23,8 @@ export interface SupervisorConfig {
   vectorType?: VectorType;
   /** Cosine similarity threshold for dedup (default: 0.85) */
   dedupThreshold?: number;
+  /** Use a persistent DB connection instead of open/close per operation (default: false) */
+  persistent?: boolean;
 }
 
 export interface Feedback {

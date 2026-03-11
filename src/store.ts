@@ -63,6 +63,8 @@ export class FeedbackStore {
   private readonly embed: SupervisorConfig["embed"];
   private readonly vectorType: string;
   private readonly dedupThreshold: number;
+  private readonly persistent: boolean;
+  private cachedDb: Database | null = null;
 
   constructor(config: SupervisorConfig) {
     this.dbPath = config.dbPath;
@@ -70,9 +72,13 @@ export class FeedbackStore {
     this.embed = config.embed;
     this.vectorType = config.vectorType ?? "vector32";
     this.dedupThreshold = config.dedupThreshold ?? 0.85;
+    this.persistent = config.persistent ?? false;
   }
 
-  private async withDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
+  /**
+   * Open a new DB connection with retry logic for lock contention.
+   */
+  private async openConnection(): Promise<Database> {
     const maxRetries = 10;
     const baseDelay = 50;
 
@@ -95,6 +101,31 @@ export class FeedbackStore {
 
     await db.exec("PRAGMA journal_mode=WAL");
     await db.exec("PRAGMA busy_timeout = 5000");
+    return db;
+  }
+
+  /**
+   * Get the persistent DB connection, creating it if needed.
+   */
+  private async getDb(): Promise<Database> {
+    if (!this.cachedDb) {
+      this.cachedDb = await this.openConnection();
+    }
+    return this.cachedDb;
+  }
+
+  /**
+   * Execute a function with a DB connection.
+   * In persistent mode, reuses a single long-lived connection.
+   * In non-persistent mode (CLI), opens and closes per operation.
+   */
+  private async withDb<T>(fn: (db: Database) => Promise<T>): Promise<T> {
+    if (this.persistent) {
+      const db = await this.getDb();
+      return fn(db);
+    }
+
+    const db = await this.openConnection();
     try {
       return await fn(db);
     } finally {
@@ -388,6 +419,10 @@ export class FeedbackStore {
   }
 
   async close(): Promise<void> {
+    if (this.cachedDb) {
+      this.cachedDb.close();
+      this.cachedDb = null;
+    }
     this.initialized = false;
   }
 }
