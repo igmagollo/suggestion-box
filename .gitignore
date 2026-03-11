@@ -1,13 +1,13 @@
 node_modules/
 dist/
-.suggestion-box/
 *.db
 *.db-wal
 *.db-shm
 bun.lock
 docs/
 .cachebro/
+.worktrees/
+.suggestion-box/
 .mcp.json
 .codex/
 opencode.json
-.worktrees/
