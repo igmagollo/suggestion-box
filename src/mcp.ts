@@ -61,12 +61,13 @@ Use category "observation" when:
 
 If similar feedback already exists, your submission becomes a vote on it instead of creating a duplicate. Include impact estimates to help prioritize.`,
     submitFeedbackSchema.shape,
-    async ({ category, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes }) => {
+    async ({ category, title, content, target_type, target_name, github_repo, estimated_tokens_saved, estimated_time_saved_minutes }) => {
       try {
         store.embedPending().catch((e) => console.error("[suggestion-box] embedPending error:", e));
 
         const result = await store.submitFeedback({
           category,
+          title,
           content,
           targetType: target_type,
           targetName: target_name,

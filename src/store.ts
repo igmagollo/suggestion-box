@@ -22,6 +22,7 @@ function vecBuf(vec: Float32Array): Buffer {
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS feedback (
     id                          TEXT PRIMARY KEY,
+    title                       TEXT,
     content                     TEXT NOT NULL,
     embedding                   BLOB,
     category                    TEXT NOT NULL,
@@ -104,6 +105,12 @@ export class FeedbackStore {
     if (this.initialized) return;
     await this.withDb(async (db) => {
       await db.exec(SCHEMA);
+      // Migrate existing databases: add title column if missing
+      try {
+        await db.exec("ALTER TABLE feedback ADD COLUMN title TEXT");
+      } catch {
+        // Column already exists — ignore
+      }
     });
     this.initialized = true;
   }
@@ -141,10 +148,10 @@ export class FeedbackStore {
     const id = randomUUID();
     await this.withDb(async (db) => {
       await db.prepare(
-        `INSERT INTO feedback (id, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?)`
+        `INSERT INTO feedback (id, title, content, embedding, category, target_type, target_name, github_repo, status, votes, estimated_tokens_saved, estimated_time_saved_minutes, created_at, updated_at, session_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open', 1, ?, ?, ?, ?, ?)`
       ).run(
-        id, input.content, vecBuf(embedding), input.category, input.targetType,
+        id, input.title ?? null, input.content, vecBuf(embedding), input.category, input.targetType,
         input.targetName, input.githubRepo ?? null,
         input.estimatedTokensSaved ?? null, input.estimatedTimeSavedMinutes ?? null,
         now, now, this.sessionId
@@ -162,7 +169,7 @@ export class FeedbackStore {
     return this.withDb(async (db) => {
       const vfn = this.vfn;
       const rows = await db.prepare(`
-        SELECT id, content, category, target_type, target_name, github_repo,
+        SELECT id, title, content, category, target_type, target_name, github_repo,
                status, votes, estimated_tokens_saved, estimated_time_saved_minutes,
                created_at, updated_at, published_issue_url, session_id,
                vector_distance_cos(${vfn}(embedding), ${vfn}(?)) AS distance
@@ -184,6 +191,7 @@ export class FeedbackStore {
   private rowToFeedback(row: any): Feedback {
     return {
       id: row.id,
+      title: row.title ?? null,
       content: row.content,
       category: row.category,
       targetType: row.target_type,

@@ -50,9 +50,14 @@ export function createGithubIssue(
     "*Submitted via [suggestion-box](https://github.com/igmagollo/suggestion-box) — feedback registry for coding agents.*",
   ].join("\n");
 
-  // Title: first sentence or first 80 chars of content, whichever is shorter
-  const firstSentence = feedback.content.split(/[.\n]/)[0].trim();
-  const summary = firstSentence.length > 80 ? firstSentence.slice(0, 77) + "..." : firstSentence;
+  // Title: use explicit title if provided, otherwise first sentence of content
+  let summary: string;
+  if (feedback.title) {
+    summary = feedback.title;
+  } else {
+    const firstSentence = feedback.content.split(/[.\n]/)[0].trim();
+    summary = firstSentence.length > 80 ? firstSentence.slice(0, 77) + "..." : firstSentence;
+  }
   const title = `[${categoryLabel[feedback.category] ?? feedback.category}] ${summary}`;
 
   // Try to create labels (ignore failures — labels may already exist or user may lack permissions)

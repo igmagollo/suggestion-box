@@ -27,6 +27,7 @@ export interface SupervisorConfig {
 
 export interface Feedback {
   id: string;
+  title: string | null;
   content: string;
   category: FeedbackCategory;
   targetType: TargetType;
@@ -44,6 +45,7 @@ export interface Feedback {
 
 export interface SubmitFeedbackInput {
   category: FeedbackCategory;
+  title?: string;
   content: string;
   targetType: TargetType;
   targetName: string;

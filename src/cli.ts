@@ -194,6 +194,7 @@ IMPORTANT RULES:
 
     const issueUrl = createGithubIssue(repo, {
       id: row.id,
+      title: row.title ?? null,
       content: row.content,
       category: row.category,
       targetType: row.target_type,
